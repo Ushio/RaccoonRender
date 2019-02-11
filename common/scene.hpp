@@ -8,14 +8,14 @@ namespace rt {
 	public:
 		virtual ~MaterialDeclaration() {}
 		virtual const char *name() const = 0;
-		virtual std::unique_ptr<BxDF> instanciate(const houdini_alembic::PolygonMeshObject *p, uint32_t primitive_index) const = 0;
+		virtual std::unique_ptr<BxDF> instanciate(const houdini_alembic::PolygonMeshObject *p, uint32_t primitive_index, const glm::dmat3 &xformInverseTransposed) const = 0;
 	};
 	class LambertianDeclaration : public MaterialDeclaration {
 	public:
 		const char *name() const override {
 			return "Lambertian";
 		}
-		std::unique_ptr<BxDF> instanciate(const houdini_alembic::PolygonMeshObject *p, uint32_t primitive_index) const override {
+		std::unique_ptr<BxDF> instanciate(const houdini_alembic::PolygonMeshObject *p, uint32_t primitive_index, const glm::dmat3 &xformInverseTransposed) const override {
 			std::unique_ptr<LambertianBRDF> bxdf(new LambertianBRDF());
 			if (auto Cd = p->primitives.column_as_vector3("Cd")) {
 				Cd->get(primitive_index, glm::value_ptr(bxdf->R));
@@ -33,7 +33,7 @@ namespace rt {
 		new LambertianDeclaration(),
 	};
 
-	inline std::vector<std::unique_ptr<BxDF>> instanciateMaterials(houdini_alembic::PolygonMeshObject *p) {
+	inline std::vector<std::unique_ptr<BxDF>> instanciateMaterials(houdini_alembic::PolygonMeshObject *p, const glm::dmat3 &xformInverseTransposed) {
 		std::vector<std::unique_ptr<BxDF>> materials;
 
 		auto material_string = p->primitives.column_as_string("material");
@@ -47,7 +47,7 @@ namespace rt {
 			const std::string m = material_string->get(i);
 			for (int j = 0; j < MaterialDeclarations.size(); ++j) {
 				if (m == MaterialDeclarations[j]->name()) {
-					mat = MaterialDeclarations[j]->instanciate(p, i);
+					mat = MaterialDeclarations[j]->instanciate(p, i, xformInverseTransposed);
 					break;
 				}
 			}
@@ -66,6 +66,11 @@ namespace rt {
 		printf("Embree Error [%d] %s\n", code, str);
 	}
 
+	struct Luminaire {
+		glm::dvec3 points[3];
+		glm::dvec3 Ng;
+		bool backenable = false;
+	};
 	class Scene {
 	public:
 		Scene(std::shared_ptr<houdini_alembic::AlembicScene> scene) : _scene(scene) {
@@ -89,7 +94,6 @@ namespace rt {
 					addPolymesh(polymesh);
 				}
 			}
-
 			RT_ASSERT(_camera);
 
 			rtcCommitScene(_embreeScene.get());
@@ -185,14 +189,38 @@ namespace rt {
 			auto points_column = p->points.column_as_vector3("P");
 			RT_ASSERT(points_column);
 
-			polymesh->points.reserve(points_column->rowCount());
+			glm::dmat4 xform;
+			for (int i = 0; i < 16; ++i) {
+				glm::value_ptr(xform)[i] = p->combinedXforms.value_ptr()[i];
+			}
+			glm::dmat3 xformInverseTransposed = glm::inverseTranspose(xform);
+
+			polymesh->points.resize(points_column->rowCount());
 			for (int i = 0; i < points_column->rowCount(); ++i) {
 				glm::vec3 p;
 				points_column->get(i, glm::value_ptr(p));
-				polymesh->points.push_back(p);
+
+				// apply transform
+				p = xform * glm::dvec4(p, 1.0);
+
+				polymesh->points[i] = p;
 			}
 
-			polymesh->materials = instanciateMaterials(p);
+			polymesh->materials = instanciateMaterials(p, xformInverseTransposed);
+
+			// add Luminaire
+			auto luminaires = p->primitives.column_as_int("luminaires");
+			auto luminaires_backenable = p->primitives.column_as_int("luminaires_backenable");
+			if (luminaires && luminaires_backenable) {
+				RT_ASSERT(luminaires->rowCount() == p->primitives.rowCount());
+				RT_ASSERT(luminaires_backenable->rowCount() == p->primitives.rowCount());
+
+				for (int i = 0; i < p->primitives.rowCount(); ++i) {
+					if (luminaires->get(i)) {
+
+					}
+				}
+			}
 
 			// add to embree
 			// https://www.slideshare.net/IntelSoftware/embree-ray-tracing-kernels-overview-and-new-features-siggraph-2018-tech-session
@@ -204,6 +232,8 @@ namespace rt {
 			size_t indexStride = sizeof(uint32_t) * 3;
 			size_t primitiveCount = polymesh->indices.size() / 3;
 			rtcSetSharedGeometryBuffer(g, RTC_BUFFER_TYPE_INDEX, 0 /*slot*/, RTC_FORMAT_UINT3, polymesh->indices.data(), 0 /*byteoffset*/, indexStride, primitiveCount);
+
+			rtcSetGeometryTransform(g, 0, RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, p->combinedXforms.value_ptr());
 
 			rtcCommitGeometry(g);
 			rtcAttachGeometryByID(_embreeScene.get(), g, _polymeshes.size());
@@ -219,6 +249,8 @@ namespace rt {
 
 		std::shared_ptr<RTCDeviceTy> _embreeDevice;
 		std::shared_ptr<RTCSceneTy> _embreeScene;
+
+		std::vector<Luminaire> _luminaires;
 
 		mutable RTCIntersectContext _context;
 	};
