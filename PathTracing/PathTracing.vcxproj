@@ -151,7 +151,7 @@
     </ClCompile>
     <Link>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
-      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -173,7 +173,7 @@
     </ClCompile>
     <Link>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
-      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -204,6 +204,7 @@
     <ClInclude Include="..\common\peseudo_random.hpp" />
     <ClInclude Include="..\common\randomsampler.hpp" />
     <ClInclude Include="..\common\scene.hpp" />
+    <ClInclude Include="..\common\spherical_triangle_sampler.hpp" />
     <ClInclude Include="..\libs\houdini_alembic\houdini_alembic.hpp" />
     <ClInclude Include="..\libs\ofxRaccoonImGui\imconfig.h" />
     <ClInclude Include="..\libs\ofxRaccoonImGui\imgui.h" />

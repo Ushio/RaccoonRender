@@ -66,10 +66,33 @@ namespace rt {
 		printf("Embree Error [%d] %s\n", code, str);
 	}
 
+	// 平面の方程式 
+	// ax + by + cz + d = 0
+	// n = {a, b, c}
+	struct PlaneEquation {
+		glm::dvec3 n;
+		double d = 0.0;
+
+		void from_point_and_normal(glm::dvec3 point_on_plane, glm::dvec3 normalized_normal) {
+			d = -glm::dot(point_on_plane, normalized_normal);
+			n = normalized_normal;
+		}
+		double signed_distance(glm::dvec3 p) const {
+			return glm::dot(n, p) + d;
+		}
+	};
+
+	inline glm::dvec3 triangle_normal(const glm::dvec3 &v0, const glm::dvec3 &v1, const glm::dvec3 &v2) {
+		glm::dvec3 e1 = v1 - v0;
+		glm::dvec3 e2 = v2 - v0;
+		return glm::normalize(glm::cross(e1, e2));
+	}
+
 	struct Luminaire {
 		glm::dvec3 points[3];
 		glm::dvec3 Ng;
 		bool backenable = false;
+		PlaneEquation plane;
 	};
 	class Scene {
 	public:
@@ -160,6 +183,9 @@ namespace rt {
 		houdini_alembic::CameraObject *camera() {
 			return _camera;
 		}
+		const std::vector<Luminaire> &luminaires() const {
+			return _luminaires;
+		}
 	private:
 		class Polymesh {
 		public:
@@ -217,7 +243,18 @@ namespace rt {
 
 				for (int i = 0; i < p->primitives.rowCount(); ++i) {
 					if (luminaires->get(i)) {
-
+						Luminaire L;
+						for (int j = 0; j < 3; ++j) {
+							int index_src = i * 3 + j;
+							RT_ASSERT(index_src < polymesh->indices.size());
+							int index = polymesh->indices[index_src];
+							RT_ASSERT(index < polymesh->points.size());
+							L.points[j] = polymesh->points[index];
+						}
+						L.backenable = luminaires_backenable->get(i) != 0;
+						L.Ng = triangle_normal(L.points[0], L.points[1], L.points[2]);
+						L.plane.from_point_and_normal(L.points[0], L.Ng);
+						_luminaires.emplace_back(L);
 					}
 				}
 			}
@@ -233,8 +270,6 @@ namespace rt {
 			size_t primitiveCount = polymesh->indices.size() / 3;
 			rtcSetSharedGeometryBuffer(g, RTC_BUFFER_TYPE_INDEX, 0 /*slot*/, RTC_FORMAT_UINT3, polymesh->indices.data(), 0 /*byteoffset*/, indexStride, primitiveCount);
 
-			rtcSetGeometryTransform(g, 0, RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, p->combinedXforms.value_ptr());
-
 			rtcCommitGeometry(g);
 			rtcAttachGeometryByID(_embreeScene.get(), g, _polymeshes.size());
 			rtcReleaseGeometry(g);
@@ -242,6 +277,7 @@ namespace rt {
 			// add to member
 			_polymeshes.emplace_back(std::move(polymesh));
 		}
+
 	private:
 		std::shared_ptr<houdini_alembic::AlembicScene> _scene;
 		houdini_alembic::CameraObject *_camera = nullptr;

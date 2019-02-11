@@ -5,6 +5,8 @@
 #include "peseudo_random.hpp"
 #include "material.hpp"
 #include "scene.hpp"
+#include "spherical_triangle_sampler.hpp"
+#include "value_prportional_sampler.hpp"
 
 namespace rt {
 	class Image {
@@ -50,6 +52,58 @@ namespace rt {
 		std::vector<XoroshiroPlus128> _randoms;
 	};
 
+	class DirectSampler {
+	public:
+		DirectSampler(const rt::Scene *scene, glm::dvec3 p):_p(p) {
+			const std::vector<Luminaire> &luminaires = scene->luminaires();
+			for (int i = 0; i < luminaires.size(); ++i) {
+				if (1.0e-5 < std::abs(luminaires[i].plane.signed_distance(p))) {
+					_samplers.emplace_back(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], p);
+				}
+			}
+			_selector = ValueProportionalSampler<double>(_samplers, [](const SphericalTriangleSampler s) { return s.solidAngle(); });
+		}
+		bool canSample() const {
+			return _selector.size() != 0;
+		}
+		glm::dvec3 sample(PeseudoRandom *random) const {
+			int index = _selector.sample(random);
+			return _samplers[index].sample_direction(random->uniform(), random->uniform());
+		}
+		double pdf(glm::dvec3 sampled) const {
+			glm::dvec3 n0;
+			glm::dvec3 n1;
+			glm::dvec3 n2;
+
+			double sum_pdf = 0.0;
+			for (int i = 0; i < _samplers.size(); ++i) {
+				if (glm::dot(_samplers[i]._nAB, _samplers[i]._C) < 0.0) {
+					// 表面が見えている, 法線は外向き
+					n0 = -_samplers[i]._nAB;
+					n1 = -_samplers[i]._nBC;
+					n2 = -_samplers[i]._nCA;
+				}
+				else {
+					// 裏面が見えている, 法線は内向き
+					n0 = _samplers[i]._nAB;
+					n1 = _samplers[i]._nBC;
+					n2 = _samplers[i]._nCA;
+				}
+
+				// すべて内向きになった
+				if (0.0 < glm::dot(sampled, n0) && 0.0 < glm::dot(sampled, n1) && 0.0 < glm::dot(sampled, n2)) {
+					double this_pdf = 1.0 / _samplers[i].solidAngle();
+					sum_pdf += _selector.probability(i) * this_pdf;
+				}
+			}
+
+			return sum_pdf;
+		}
+		glm::dvec3 _p;
+		std::vector<SphericalTriangleSampler> _samplers;
+		ValueProportionalSampler<double> _selector;
+	};
+
 	inline glm::dvec3 radiance(const rt::Scene *scene, glm::dvec3 ro, glm::dvec3 rd, PeseudoRandom *random) {
 		// const double kSceneEPS = scene.adaptiveEps();
 		const double kSceneEPS = 1.0e-4;
@@ -68,22 +122,32 @@ namespace rt {
 			glm::dvec3 wo = -rd;
 
 			if (scene->intersect(ro, rd, &shadingPoint, &tmin)) {
-				shadingPoint.Ng = glm::normalize(shadingPoint.Ng);
+				auto p = ro + rd * (double)tmin;
 
-				glm::dvec3 wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+				shadingPoint.Ng = glm::normalize(shadingPoint.Ng);
+				glm::dvec3 wi;
+
+				//DirectSampler directSampler(scene, p);
+
+				//double P_Direct = directSampler.canSample() ? 0.5 : 0.0;
+				//if (random->uniform() < P_Direct) {
+				//	wi = directSampler.sample(random);
+				//}
+				//else {
+				//	wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+				//}
+
+				//double pdf = P_Direct * directSampler.pdf(wi)
+				//	+ (1.0 - P_Direct) * shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+				
+				wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+				double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+
 				glm::dvec3 bxdf = shadingPoint.bxdf->bxdf(wo, wi, shadingPoint);
 				glm::dvec3 emission = shadingPoint.bxdf->emission(wo, shadingPoint);
-				double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+				
 				double NoI = glm::dot(shadingPoint.Ng, wi);
 				double cosTheta = std::abs(NoI);
-
-				//if (inside) {
-				//	T *= m->beers_law(tmin);
-				//}
-				//bool over_boundary = NoI < 0.0;
-				//if (over_boundary) {
-				//	inside = !inside;
-				//}
 
 				glm::dvec3 contribution = emission * T;
 
@@ -101,7 +165,7 @@ namespace rt {
 				//}
 
 				// バイアスする方向は潜り込むときは逆転する
-				auto p = ro + rd * (double)tmin;
+				
 				ro = p + (0.0 < NoI ? shadingPoint.Ng : -shadingPoint.Ng) * kSceneEPS;
 				rd = wi;
 			}
