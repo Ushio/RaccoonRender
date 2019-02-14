@@ -5,6 +5,7 @@
 #include <memory>
 #include <map>
 #include <sstream>
+#include <functional>
 
 namespace houdini_alembic {
 	//class Vector2f : public IStringConvertible {
@@ -211,6 +212,7 @@ namespace houdini_alembic {
 
 	enum SceneObjectType {
 		SceneObjectType_PolygonMesh,
+		SceneObjectType_Point,
 		SceneObjectType_Camera,
 	};
 	class SceneObject {
@@ -242,13 +244,26 @@ namespace houdini_alembic {
 			return SceneObjectType_PolygonMesh;
 		}
 
-		std::vector<int32_t> faceCounts;
-		std::vector<int32_t> indices;
+		std::vector<uint32_t> faceCounts;
+		std::vector<uint32_t> indices;
+		std::vector<Vector3f> P;
 
 		AttributeSpreadSheet points;
 		AttributeSpreadSheet vertices;
 		AttributeSpreadSheet primitives;
 	};
+	class PointObject : public SceneObject {
+	public:
+		SceneObjectType type() const override {
+			return SceneObjectType_Point;
+		}
+
+		std::vector<uint64_t> pointIds;
+		std::vector<Vector3f> P;
+
+		AttributeSpreadSheet points;
+	};
+	
 	class CameraObject : public SceneObject {
 	public:
 		SceneObjectType type() const override {
@@ -290,9 +305,31 @@ namespace houdini_alembic {
 		float objectPlaneHeight = 0.0f;
 
 	};
+
+	class SceneObjectPointer {
+	public:
+		SceneObjectPointer(std::shared_ptr<SceneObject> p) {
+			_pointer = p;
+		}
+		PolygonMeshObject *as_polygonMesh() const {
+			return dynamic_cast<PolygonMeshObject *>(_pointer.get());
+		}
+		PointObject *as_point() const {
+			return dynamic_cast<PointObject *>(_pointer.get());
+		}
+		CameraObject *as_camera() const {
+			return dynamic_cast<CameraObject *>(_pointer.get());
+		}
+		SceneObject *operator->() const {
+			return _pointer.get();
+		}
+	private:
+		std::shared_ptr<SceneObject> _pointer;
+	};
+
 	class AlembicScene {
 	public:
-		std::vector<std::shared_ptr<SceneObject>> objects;
+		std::vector<SceneObjectPointer> objects;
 	};
 
 	class AlembicStorage {

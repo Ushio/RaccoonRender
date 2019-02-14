@@ -108,12 +108,13 @@ namespace rt {
 					continue;
 				}
 
-				if (_camera == nullptr && o->type() == houdini_alembic::SceneObjectType_Camera) {
-					_camera = static_cast<houdini_alembic::CameraObject *>(o.get());
+				if (_camera == nullptr) {
+					if (auto camera = o.as_camera()) {
+						_camera = camera;
+					}
 				}
 
-				if (o->type() == houdini_alembic::SceneObjectType_PolygonMesh) {
-					houdini_alembic::PolygonMeshObject *polymesh = static_cast<houdini_alembic::PolygonMeshObject *>(o.get());
+				if (auto polymesh = o.as_polygonMesh()) {
 					addPolymesh(polymesh);
 				}
 			}
@@ -190,7 +191,7 @@ namespace rt {
 		class Polymesh {
 		public:
 			std::vector<std::unique_ptr<BxDF>> materials;
-			std::vector<int32_t> indices;
+			std::vector<uint32_t> indices;
 			std::vector<glm::vec3> points;
 		};
 
@@ -212,24 +213,16 @@ namespace rt {
 
 			RT_ASSERT(std::all_of(polymesh->indices.begin(), polymesh->indices.end(), [p](uint32_t index) { return index < p->points.rowCount(); }));
 
-			auto points_column = p->points.column_as_vector3("P");
-			RT_ASSERT(points_column);
-
 			glm::dmat4 xform;
 			for (int i = 0; i < 16; ++i) {
 				glm::value_ptr(xform)[i] = p->combinedXforms.value_ptr()[i];
 			}
 			glm::dmat3 xformInverseTransposed = glm::inverseTranspose(xform);
 
-			polymesh->points.resize(points_column->rowCount());
-			for (int i = 0; i < points_column->rowCount(); ++i) {
-				glm::vec3 p;
-				points_column->get(i, glm::value_ptr(p));
-
-				// apply transform
-				p = xform * glm::dvec4(p, 1.0);
-
-				polymesh->points[i] = p;
+			polymesh->points.reserve(p->P.size());
+			for (auto srcP : p->P) {
+				glm::vec3 p = xform * glm::dvec4(srcP.x, srcP.y, srcP.z, 1.0);
+				polymesh->points.emplace_back(p);
 			}
 
 			polymesh->materials = instanciateMaterials(p, xformInverseTransposed);

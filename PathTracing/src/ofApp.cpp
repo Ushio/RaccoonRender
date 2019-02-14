@@ -77,6 +77,8 @@ inline bool isPowerOfTwo(uint32_t n) {
 
 //--------------------------------------------------------------
 void ofApp::draw() {
+	static int frame = 0;
+
 	if (_renderer) {
 		_renderer->step();
 
@@ -86,7 +88,6 @@ void ofApp::draw() {
 			_image.setFromPixels(toOf(_renderer->_image));
 		}
 		uint32_t n = _renderer->stepCount();
-
 		if (32 <= n && isPowerOfTwo(n)) {
 			_image.setFromPixels(toOf(_renderer->_image));
 			char name[64];
@@ -94,6 +95,31 @@ void ofApp::draw() {
 			_image.save(name);
 			printf("elapsed %fs\n", ofGetElapsedTimef());
 		}
+
+		//if (_renderer->stepCount() == 512) {
+		//	_image.setFromPixels(toOf(_renderer->_image));
+		//	char name[64];
+		//	sprintf(name, "images/frame_%03d.png", frame);
+		//	_image.save(name);
+
+		//	frame++;
+
+		//	houdini_alembic::AlembicStorage storage;
+		//	std::string error_message;
+		//	storage.open(ofToDataPath("../../../scenes/CornelBox.abc"), error_message);
+
+		//	if (storage.isOpened()) {
+		//		std::string error_message;
+		//		_alembicscene = storage.read(frame, error_message);
+		//	}
+		//	if (error_message.empty() == false) {
+		//		printf("sample error_message: %s\n", error_message.c_str());
+		//	}
+
+		//	_scene = std::shared_ptr<rt::Scene>(new rt::Scene(_alembicscene));
+		//	_renderer = std::shared_ptr<rt::PTRenderer>(new rt::PTRenderer(_scene));
+		//}
+
 
 		ofEnableArbTex();
 	}
@@ -114,7 +140,7 @@ void ofApp::draw() {
 	ofSetColor(255);
 
 	if (_alembicscene) {
-		drawAlembicScene(_alembicscene, _camera_model, true /*draw camera*/);
+		drawAlembicScene(_alembicscene.get(), _camera_model, true /*draw camera*/);
 	}
 
 	_camera.end();
@@ -138,7 +164,8 @@ void ofApp::draw() {
 	ImGui::SetNextWindowBgAlpha(0.5f);
 
 	ImGui::Begin("settings", nullptr);
-
+	ImGui::Text("frame : %d", frame);
+	ImGui::Separator();
 	ImGui::Text("%d sample, fps = %.3f", _renderer->stepCount(), ofGetFrameRate());
 	ImGui::Text("%d bad sample nan", _renderer->badSampleNanCount());
 	ImGui::Text("%d bad sample inf", _renderer->badSampleInfCount());

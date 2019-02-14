@@ -3,8 +3,11 @@
 #include "ofMain.h"
 #include "houdini_alembic.hpp"
 
-inline void drawAlembicPolygon(std::shared_ptr<houdini_alembic::PolygonMeshObject> polygon) {
-	auto P_Column = polygon->points.column_as_vector3("P");
+const float kNormalLength = 0.1f;
+const ofColor kNormalColor = ofColor(32, 32, 255);
+
+inline void drawAlembicPolygon(const houdini_alembic::PolygonMeshObject *polygon) {
+	// auto P_Column = polygon->points.column_as_vector3("P");
 
 	bool isTriangleMesh = std::all_of(polygon->faceCounts.begin(), polygon->faceCounts.end(), [](int32_t f) { return f == 3; });
 
@@ -17,27 +20,52 @@ inline void drawAlembicPolygon(std::shared_ptr<houdini_alembic::PolygonMeshObjec
 		normalMesh.clear();
 		normalMesh.setMode(OF_PRIMITIVE_LINES);
 
-		int rowCount = P_Column->rowCount();
-		for (int i = 0; i < rowCount; ++i) {
-			glm::vec3 p;
-			P_Column->get(i, glm::value_ptr(p));
-			mesh.addVertex(p);
+		for (auto p : polygon->P) {
+			mesh.addVertex(glm::vec3(p.x, p.y, p.z));
 		}
 
 		for (auto index : polygon->indices) {
 			mesh.addIndex(index);
 		}
 
+		// Point Normal
 		if (auto N = polygon->points.column_as_vector3("N")) {
 			for (int i = 0; i < N->rowCount(); ++i) {
-				glm::vec3 p;
-				P_Column->get(i, glm::value_ptr(p));
+				glm::vec3 p = { polygon->P[i].x, polygon->P[i].y , polygon->P[i].z };
 
 				glm::vec3 n;
 				N->get(i, glm::value_ptr(n));
 
 				normalMesh.addVertex(p);
-				normalMesh.addVertex(p + n * 0.1);
+				normalMesh.addVertex(p + n * kNormalLength);
+			}
+		}
+		// Vertices Normal
+		if (auto N = polygon->vertices.column_as_vector3("N")) {
+			for (int i = 0; i < polygon->indices.size(); i += 3) {
+				std::array<glm::vec3, 3> point;
+				std::array<glm::vec3, 3> normal;
+				for (int j = 0; j < 3; ++j) {
+					uint32_t index = polygon->indices[i + j];
+					point[j] = glm::vec3(polygon->P[index].x, polygon->P[index].y, polygon->P[index].z);
+					N->get(i + j, glm::value_ptr(normal[j]));
+				}
+
+				glm::vec3 primitive_center;
+				for (auto p : point) {
+					primitive_center += p;
+				}
+				primitive_center /= (float)point.size();
+
+				for (int j = 0; j < point.size(); ++j) {
+					glm::vec3 n = normal[j];
+					glm::vec3 p = point[j];
+
+					glm::vec3 offsetted_p = glm::mix(p, primitive_center, 0.1f);
+
+					normalMesh.addVertex(offsetted_p);
+					normalMesh.addVertex(offsetted_p + n * kNormalLength);
+				}
 			}
 		}
 
@@ -72,7 +100,7 @@ inline void drawAlembicPolygon(std::shared_ptr<houdini_alembic::PolygonMeshObjec
 		}
 		glDisable(GL_CULL_FACE);
 
-		ofSetColor(128, 128, 255);
+		ofSetColor(kNormalColor);
 		normalMesh.draw();
 
 		glEnable(GL_POLYGON_OFFSET_LINE);
@@ -85,7 +113,38 @@ inline void drawAlembicPolygon(std::shared_ptr<houdini_alembic::PolygonMeshObjec
 		ofPopMatrix();
 	}
 }
-inline void drawAlembicCamera(std::shared_ptr<houdini_alembic::CameraObject> camera, ofMesh &camera_model) {
+inline void drawAlembicPoint(const houdini_alembic::PointObject *point) {
+	static ofMesh mesh;
+	static ofMesh normalMesh;
+	mesh.clear();
+	mesh.setMode(OF_PRIMITIVE_POINTS);
+
+	normalMesh.clear();
+	normalMesh.setMode(OF_PRIMITIVE_LINES);
+
+	for (auto p : point->P) {
+		mesh.addVertex(glm::vec3(p.x, p.y, p.z));
+	}
+
+	if (auto N = point->points.column_as_vector3("N")) {
+		for (int i = 0; i < N->rowCount(); ++i) {
+			glm::vec3 p = { point->P[i].x, point->P[i].y, point->P[i].z };
+
+			glm::vec3 n;
+			N->get(i, glm::value_ptr(n));
+
+			normalMesh.addVertex(p);
+			normalMesh.addVertex(p + n * kNormalLength);
+		}
+	}
+
+	ofSetColor(200);
+	mesh.draw();
+
+	ofSetColor(kNormalColor);
+	normalMesh.draw();
+}
+inline void drawAlembicCamera(const houdini_alembic::CameraObject *camera, ofMesh &camera_model) {
 	ofPushMatrix();
 	ofMultMatrix(camera->combinedXforms.value_ptr());
 
@@ -114,18 +173,19 @@ inline void drawAlembicCamera(std::shared_ptr<houdini_alembic::CameraObject> cam
 		ofDrawLine(to(camera->eye), to(camera->eye) + (object_vertices[i] - to(camera->eye)) * 3.0f);
 	}
 }
-inline void drawAlembicScene(std::shared_ptr<houdini_alembic::AlembicScene> scene, ofMesh &camera_model, bool draw_camera) {
+inline void drawAlembicScene(houdini_alembic::AlembicScene *scene, ofMesh &camera_model, bool draw_camera) {
 	for (auto o : scene->objects) {
 		if (o->visible == false) {
 			continue;
 		}
-		if (o->type() == houdini_alembic::SceneObjectType_PolygonMesh) {
-			auto polygon = std::dynamic_pointer_cast<houdini_alembic::PolygonMeshObject>(o);
-			drawAlembicPolygon(polygon);
-		}
-		else if (o->type() == houdini_alembic::SceneObjectType_Camera && draw_camera) {
-			auto camera = std::dynamic_pointer_cast<houdini_alembic::CameraObject>(o);
+		if (auto camera = o.as_camera()) {
 			drawAlembicCamera(camera, camera_model);
+		}
+		else if (auto point = o.as_point()) {
+			drawAlembicPoint(point);
+		}
+		else if (auto polygon = o.as_polygonMesh()) {
+			drawAlembicPolygon(polygon);
 		}
 	}
 }

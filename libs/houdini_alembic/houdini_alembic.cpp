@@ -340,54 +340,122 @@ namespace houdini_alembic {
 		return false;
 	}
 
+	static void parse_attributes(
+		AttributeSpreadSheet *points, AttributeSpreadSheet *vertices, AttributeSpreadSheet *primitives,
+		ICompoundProperty compound_prop, ISampleSelector selector
+	) {
+		for (int i = 0; i < compound_prop.getNumProperties(); ++i) {
+			auto child_header = compound_prop.getPropertyHeader(i);
+			auto key = child_header.getName();
+			if (key.size() == 0) {
+				continue;
+			}
+			if (key[0] == '.') {
+				continue;
+			}
+
+			std::shared_ptr<AttributeColumn> attributes;
+			std::string geoScope;
+			if (parse_attributes(compound_prop, key, selector, attributes, geoScope)) {
+				if (points && geoScope == "var" || geoScope == "vtx") {
+					points->sheet.emplace_back(key, attributes);
+				}
+				else if (vertices && geoScope == "fvr") {
+					vertices->sheet.emplace_back(key, attributes);
+				}
+				else if (primitives && geoScope == "uni") {
+					primitives->sheet.emplace_back(key, attributes);
+				}
+			}
+		}
+		
+		if (points) {
+			std::sort(points->sheet.begin(), points->sheet.end());
+		}
+		if (vertices) {
+			std::sort(vertices->sheet.begin(), vertices->sheet.end());
+		}
+		if (primitives) {
+			std::sort(primitives->sheet.begin(), primitives->sheet.end());
+		}
+	}
+
 	inline void parse_polymesh(IPolyMesh polyMesh, std::shared_ptr<PolygonMeshObject> polymeshObject, ISampleSelector selector) {
 		auto schema = polyMesh.getSchema();
 		IPolyMeshSchema::Sample sample;
 		schema.get(sample, selector);
 		
 		Int32ArraySamplePtr faceCounts = sample.getFaceCounts();
-		polymeshObject->faceCounts = std::vector<int32_t>(faceCounts->get(), faceCounts->get() + faceCounts->size());
+		polymeshObject->faceCounts = std::vector<uint32_t>(faceCounts->get(), faceCounts->get() + faceCounts->size());
 
 		Int32ArraySamplePtr indices = sample.getFaceIndices();
-		polymeshObject->indices = std::vector<int32_t>(indices->get(), indices->get() + indices->size());
+		polymeshObject->indices = std::vector<uint32_t>(indices->get(), indices->get() + indices->size());
 
-		auto process_attributes = [polymeshObject, selector](ICompoundProperty compound_prop) {
-			for (int i = 0; i < compound_prop.getNumProperties(); ++i) {
-				auto child_header = compound_prop.getPropertyHeader(i);
-				auto key = child_header.getName();
-				if (key.size() == 0) {
-					continue;
-				}
-				if (key[0] == '.') {
-					continue;
-				}
+		parse_attributes(
+			&polymeshObject->points, &polymeshObject->vertices, &polymeshObject->primitives,
+			schema.getArbGeomParams(), selector
+		);
+		parse_attributes(
+			&polymeshObject->points, &polymeshObject->vertices, &polymeshObject->primitives,
+			ICompoundProperty(polyMesh.getProperties(), ".geom"), selector
+		);
 
-				std::shared_ptr<AttributeColumn> attributes;
-				std::string geoScope;
-				if (parse_attributes(compound_prop, key, selector, attributes, geoScope)) {
-					if (geoScope == "var" || geoScope == "vtx") {
-						polymeshObject->points.sheet.emplace_back(key , attributes);
-					}
-					else if (geoScope == "fvr") {
-						polymeshObject->vertices.sheet.emplace_back(key, attributes);
-					}
-					else if (geoScope == "uni") {
-						polymeshObject->primitives.sheet.emplace_back(key, attributes);
-					}
-				}
-			}
-		};
-
-		// 
-		process_attributes(ICompoundProperty(polyMesh.getProperties(), ".geom"));
-		process_attributes(schema.getArbGeomParams());
-
-		std::sort(polymeshObject->points.sheet.begin(), polymeshObject->points.sheet.end());
-		std::sort(polymeshObject->vertices.sheet.begin(), polymeshObject->vertices.sheet.end());
-		std::sort(polymeshObject->primitives.sheet.begin(), polymeshObject->primitives.sheet.end());
+		// Pは流石に登場頻度が高いので予め入れておく
+		auto p = polymeshObject->points.column_as_vector3("P");
+		polymeshObject->P.resize(p->rowCount());
+		for (int i = 0; i < polymeshObject->P.size() ; ++i) {
+			float *xyz = (float *)&polymeshObject->P[i];
+			p->get(i, xyz);
+		}
 	}
 
-	static void parse_object(IObject o, ISampleSelector selector, std::vector<M44d> xforms, std::vector<std::shared_ptr<SceneObject>> &objects) {
+	inline void parse_points(IPoints points, std::shared_ptr<PointObject> pointObject, ISampleSelector selector) {
+		auto schema = points.getSchema();
+		IPointsSchema::Sample sample;
+		schema.get(sample, selector);
+
+		auto pointIds = sample.getIds();
+		pointObject->pointIds = std::vector<uint64_t>(pointIds->get(), pointIds->get() + pointIds->size());
+		
+		parse_attributes(
+			&pointObject->points, nullptr, nullptr,
+			schema.getArbGeomParams(), selector
+		);
+		parse_attributes(
+			&pointObject->points, nullptr, nullptr,
+			ICompoundProperty(points.getProperties(), ".geom"), selector
+		);
+
+		// Pは流石に登場頻度が高いので予め入れておく
+		auto p = pointObject->points.column_as_vector3("P");
+		pointObject->P.resize(p->rowCount());
+		for (int i = 0; i < pointObject->P.size(); ++i) {
+			float *xyz = (float *)&pointObject->P[i];
+			p->get(i, xyz);
+		}
+	}
+
+	static void parse_common_property(IObject o, SceneObject *object, const std::vector<M44d> &xforms, ISampleSelector selector) {
+		IXform parentXForm(o.getParent());
+		object->name = parentXForm.getFullName();
+
+		for (int i = 0; i < xforms.size(); ++i) {
+			object->xforms.push_back(to(xforms[i]));
+		}
+		object->combinedXforms = to(combine_xform(xforms));
+
+		// http://www.sidefx.com/ja/docs/houdini/io/alembic.html#%E5%8F%AF%E8%A6%96%E6%80%A7
+		auto parentProp = parentXForm.getProperties();
+		if (parentProp.getPropertyHeader("visible")) {
+			int8_t visible = get_typed_scalar_property<ICharProperty>(parentProp, "visible", selector);
+			object->visible = visible == -1;
+		}
+		else {
+			object->visible = true;
+		}
+	}
+
+	static void parse_object(IObject o, ISampleSelector selector, std::vector<M44d> xforms, std::vector<SceneObjectPointer> &objects) {
 		auto header = o.getHeader();
 		std::string fullname = header.getFullName();
 
@@ -395,27 +463,19 @@ namespace houdini_alembic {
 			IPolyMesh polyMesh(o);
 			std::shared_ptr<PolygonMeshObject> object(new PolygonMeshObject());
 
-			IXform parentXForm(o.getParent());
-			object->name = parentXForm.getFullName();
-
-			for (int i = 0; i < xforms.size(); ++i) {
-				object->xforms.push_back(to(xforms[i]));
-			}
-			object->combinedXforms = to(combine_xform(xforms));
-			
+			parse_common_property(o, object.get(), xforms, selector);
 			parse_polymesh(polyMesh, object, selector);
 
-			// http://www.sidefx.com/ja/docs/houdini/io/alembic.html#%E5%8F%AF%E8%A6%96%E6%80%A7
-			auto parentProp = parentXForm.getProperties();
-			if (parentProp.getPropertyHeader("visible")) {
-				int8_t visible = get_typed_scalar_property<ICharProperty>(parentProp, "visible", selector);
-				object->visible = visible == -1;
-			}
-			else {
-				object->visible = true;
-			}
+			objects.emplace_back(object);
+		}
+		else if (IPoints::matches(header)) {
+			IPoints points(o);
+			std::shared_ptr<PointObject> object(new PointObject());
 
-			objects.push_back(object);
+			parse_common_property(o, object.get(), xforms, selector);
+			parse_points(points, object, selector);
+
+			objects.emplace_back(object);
 		}
 		else if (ICamera::matches(header)) {
 			// Implementation Notes
@@ -495,7 +555,7 @@ namespace houdini_alembic {
 			object->objectPlaneWidth  = 2.0f * object->focusDistance * std::tan(0.5f * object->fov_horizontal_degree / 360.0f * 2.0 * M_PI);
 			object->objectPlaneHeight = 2.0f * object->focusDistance * std::tan(0.5f * object->fov_vertical_degree   / 360.0f * 2.0 * M_PI);
 
-			objects.push_back(object);
+			objects.emplace_back(object);
 		}
 		else if (IXform::matches(header)) {
 			IXform xform(o);
@@ -516,7 +576,7 @@ namespace houdini_alembic {
 			}
 		}
 	}
-	static void parse_object(IObject o, ISampleSelector selector, std::vector<std::shared_ptr<SceneObject>> &objects) {
+	static void parse_object(IObject o, ISampleSelector selector, std::vector<SceneObjectPointer> &objects) {
 		parse_object(o, selector, std::vector<M44d>(), objects);
 	}
 

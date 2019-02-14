@@ -139,7 +139,7 @@ namespace rt {
 
 				//double pdf = P_Direct * directSampler.pdf(wi)
 				//	+ (1.0 - P_Direct) * shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
-				
+				//
 				wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
 				double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
 
