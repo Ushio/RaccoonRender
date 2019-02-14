@@ -26,6 +26,17 @@ namespace rt {
 			if (auto backEmission = p->primitives.column_as_int("back_emission")) {
 				bxdf->backEmission = backEmission->get(primitive_index) != 0;
 			}
+
+			if (auto Nv = p->vertices.column_as_vector3("N")) {
+				uint32_t index_src = primitive_index * 3;
+				for (int i = 0; i < 3; ++i) {
+					Nv->get(index_src + i, glm::value_ptr(bxdf->Nv[i]));
+					bxdf->Nv[i] = xformInverseTransposed * bxdf->Nv[i];
+				}
+			}
+			if (auto shadingNormal = p->primitives.column_as_int("shading_normal")) {
+				bxdf->shadingNormal = shadingNormal->get(primitive_index) != 0;
+			}
 			return bxdf;
 		}
 	};
@@ -160,9 +171,10 @@ namespace rt {
 			RT_ASSERT(rayhit.hit.primID < mesh->materials.size());
 			shadingPoint->bxdf = mesh->materials[rayhit.hit.primID].get();
 
-			shadingPoint->Ng.x = rayhit.hit.Ng_x;
-			shadingPoint->Ng.y = rayhit.hit.Ng_y;
-			shadingPoint->Ng.z = rayhit.hit.Ng_z;
+			// Houdini (CW) => (CCW)
+			shadingPoint->Ng.x = -rayhit.hit.Ng_x;
+			shadingPoint->Ng.y = -rayhit.hit.Ng_y;
+			shadingPoint->Ng.z = -rayhit.hit.Ng_z;
 			shadingPoint->u = rayhit.hit.u;
 			shadingPoint->v = rayhit.hit.v;
 
@@ -204,12 +216,6 @@ namespace rt {
 
 			std::unique_ptr<Polymesh> polymesh(new Polymesh());
 			polymesh->indices = p->indices;
-
-			// Vertexのアトリビュートを読むときにも影響を受けるので注意が必要
-			// Houdini (CW) => (CCW)
-			for (int i = 0; i < polymesh->indices.size(); i += 3) {
-				std::swap(polymesh->indices[i + 1], polymesh->indices[i + 2]);
-			}
 
 			RT_ASSERT(std::all_of(polymesh->indices.begin(), polymesh->indices.end(), [p](uint32_t index) { return index < p->points.rowCount(); }));
 

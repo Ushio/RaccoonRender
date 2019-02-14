@@ -70,6 +70,9 @@ namespace rt {
 		glm::dvec3 R;
 		bool backEmission = false;
 
+		glm::dvec3 Nv[3];
+		bool shadingNormal = false;
+
 		bool isEmission() const {
 			return glm::any(glm::greaterThanEqual(Le, glm::dvec3(glm::epsilon<double>())));
 		}
@@ -79,12 +82,20 @@ namespace rt {
 			}
 			return Le;
 		}
+
 		glm::dvec3 bxdf(const glm::dvec3 &wo, const glm::dvec3 &wi, const ShadingPoint &shadingPoint) const override {
 			// wo, wiは法線に対して同じ向きである必要がある
 			// 面から光はリークしない
 			if (glm::dot(shadingPoint.Ng, wi) * glm::dot(shadingPoint.Ng, wo) < 0.0) {
 				return glm::dvec3(0.0);
 			}
+
+			if (shadingNormal) {
+				glm::dvec3 Ns = (1.0 - shadingPoint.u - shadingPoint.v) * Nv[0] + shadingPoint.u * Nv[1] + shadingPoint.v * Nv[2];
+				Ns = glm::normalize(Ns);
+				return glm::abs(glm::dot(Ns, wi) / glm::dot(shadingPoint.Ng, wi)) * glm::dvec3(R) * glm::one_over_pi<double>();
+			}
+
 			return glm::dvec3(R) * glm::one_over_pi<double>();
 		}
 		glm::dvec3 sample(PeseudoRandom *random, const glm::dvec3 &wo, const ShadingPoint &shadingPoint) const override {
