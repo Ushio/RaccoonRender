@@ -110,6 +110,9 @@
     <ClInclude Include="..\common\spherical_triangle_sampler.hpp">
       <Filter>src\common</Filter>
     </ClInclude>
+    <ClInclude Include="..\common\path_tracing.hpp">
+      <Filter>src\common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="icon.rc" />

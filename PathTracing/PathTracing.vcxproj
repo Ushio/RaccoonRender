@@ -201,6 +201,7 @@
     <ClInclude Include="..\common\material.hpp" />
     <ClInclude Include="..\common\online.hpp" />
     <ClInclude Include="..\common\orthonormal_basis.hpp" />
+    <ClInclude Include="..\common\path_tracing.hpp" />
     <ClInclude Include="..\common\peseudo_random.hpp" />
     <ClInclude Include="..\common\randomsampler.hpp" />
     <ClInclude Include="..\common\scene.hpp" />

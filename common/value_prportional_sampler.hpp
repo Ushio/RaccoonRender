@@ -6,26 +6,15 @@ namespace rt{
 	template <class Real>
 	class ValueProportionalSampler {
 	public:
-		ValueProportionalSampler() {}
-		ValueProportionalSampler(const std::vector<Real> &values) {
-			Real sumValue = Real(0.0);
-			for (int i = 0; i < values.size(); ++i) {
-				sumValue += values[i];
-				_cumulativeAreas.push_back(sumValue);
-			}
-			_sumValue = sumValue;
-			_values = values;
+		void clear() {
+			_sumValue = Real(0.0);
+			_values.clear();
+			_cumulativeAreas.clear();
 		}
-		template <class T, class Func>
-		ValueProportionalSampler(const std::vector<T> &values, Func valueAccess) {
-			Real sumValue = Real(0.0);
-			for (int i = 0; i < values.size(); ++i) {
-				Real value = valueAccess(values[i]);
-				sumValue += value;
-				_values.push_back(value);
-				_cumulativeAreas.push_back(sumValue);
-			}
-			_sumValue = sumValue;
+		void add(Real value) {
+			_sumValue += value;
+			_values.push_back(value);
+			_cumulativeAreas.push_back(_sumValue);
 		}
 
 		int sample(PeseudoRandom *random) const {

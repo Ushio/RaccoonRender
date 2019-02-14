@@ -93,10 +93,15 @@ namespace rt {
 		}
 	};
 
-	inline glm::dvec3 triangle_normal(const glm::dvec3 &v0, const glm::dvec3 &v1, const glm::dvec3 &v2) {
+	inline glm::dvec3 triangle_normal_cw(const glm::dvec3 &v0, const glm::dvec3 &v1, const glm::dvec3 &v2) {
 		glm::dvec3 e1 = v1 - v0;
 		glm::dvec3 e2 = v2 - v0;
-		return glm::normalize(glm::cross(e1, e2));
+		return glm::normalize(glm::cross(e2, e1));
+	}
+	inline double triangle_area(const glm::dvec3 &p0, const glm::dvec3 &p1, const glm::dvec3 &p2) {
+		auto va = p0 - p1;
+		auto vb = p2 - p1;
+		return glm::length(glm::cross(va, vb)) * 0.5;
 	}
 
 	struct Luminaire {
@@ -104,6 +109,8 @@ namespace rt {
 		glm::dvec3 Ng;
 		bool backenable = false;
 		PlaneEquation plane;
+		double area = 0.0;
+		glm::dvec3 center;
 	};
 	class Scene {
 	public:
@@ -233,15 +240,18 @@ namespace rt {
 
 			polymesh->materials = instanciateMaterials(p, xformInverseTransposed);
 
-			// add Luminaire
-			auto luminaires = p->primitives.column_as_int("luminaires");
+			// luminaires_sampler, luminaires_backenable を読み込んで、設定
+			auto luminaires_sampler = p->primitives.column_as_int("luminaires_sampler");
 			auto luminaires_backenable = p->primitives.column_as_int("luminaires_backenable");
-			if (luminaires && luminaires_backenable) {
-				RT_ASSERT(luminaires->rowCount() == p->primitives.rowCount());
+
+			std::vector<uint32_t> luminaires_primitive_indices;
+
+			if (luminaires_sampler && luminaires_backenable) {
+				RT_ASSERT(luminaires_sampler->rowCount() == p->primitives.rowCount());
 				RT_ASSERT(luminaires_backenable->rowCount() == p->primitives.rowCount());
 
 				for (int i = 0; i < p->primitives.rowCount(); ++i) {
-					if (luminaires->get(i)) {
+					if (luminaires_sampler->get(i)) {
 						Luminaire L;
 						for (int j = 0; j < 3; ++j) {
 							int index_src = i * 3 + j;
@@ -251,11 +261,25 @@ namespace rt {
 							L.points[j] = polymesh->points[index];
 						}
 						L.backenable = luminaires_backenable->get(i) != 0;
-						L.Ng = triangle_normal(L.points[0], L.points[1], L.points[2]);
+						L.Ng = triangle_normal_cw(L.points[0], L.points[1], L.points[2]);
+
 						L.plane.from_point_and_normal(L.points[0], L.Ng);
+						L.center = (L.points[0] + L.points[1] + L.points[2]) / 3.0;
+						L.area = triangle_area(L.points[0], L.points[1], L.points[2]);
 						_luminaires.emplace_back(L);
+
+						RT_ASSERT(0.0 < L.area);
+
+						luminaires_primitive_indices.push_back(i);
 					}
 				}
+			}
+
+			// luminaires_samplerは衝突しないようにする
+			for (auto it = luminaires_primitive_indices.rbegin(); it != luminaires_primitive_indices.rend(); ++it) {
+				uint32_t primitive_index = *it;
+				polymesh->indices.erase(polymesh->indices.begin() + primitive_index * 3, polymesh->indices.begin() + primitive_index * 3 + 3);
+				polymesh->materials.erase(polymesh->materials.begin() + primitive_index);
 			}
 
 			// add to embree
@@ -268,7 +292,7 @@ namespace rt {
 			size_t indexStride = sizeof(uint32_t) * 3;
 			size_t primitiveCount = polymesh->indices.size() / 3;
 			rtcSetSharedGeometryBuffer(g, RTC_BUFFER_TYPE_INDEX, 0 /*slot*/, RTC_FORMAT_UINT3, polymesh->indices.data(), 0 /*byteoffset*/, indexStride, primitiveCount);
-
+			
 			rtcCommitGeometry(g);
 			rtcAttachGeometryByID(_embreeScene.get(), g, _polymeshes.size());
 			rtcReleaseGeometry(g);
