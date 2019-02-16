@@ -2,6 +2,8 @@
 #include <embree3/rtcore.h>
 #include "material.hpp"
 #include "assertion.hpp"
+#include "plane_equation.hpp"
+#include "triangle_util.hpp"
 
 namespace rt {
 	class MaterialDeclaration {
@@ -75,33 +77,6 @@ namespace rt {
 
 	inline void EmbreeErorrHandler(void* userPtr, RTCError code, const char* str) {
 		printf("Embree Error [%d] %s\n", code, str);
-	}
-
-	// 平面の方程式 
-	// ax + by + cz + d = 0
-	// n = {a, b, c}
-	struct PlaneEquation {
-		glm::dvec3 n;
-		double d = 0.0;
-
-		void from_point_and_normal(glm::dvec3 point_on_plane, glm::dvec3 normalized_normal) {
-			d = -glm::dot(point_on_plane, normalized_normal);
-			n = normalized_normal;
-		}
-		double signed_distance(glm::dvec3 p) const {
-			return glm::dot(n, p) + d;
-		}
-	};
-
-	inline glm::dvec3 triangle_normal_cw(const glm::dvec3 &v0, const glm::dvec3 &v1, const glm::dvec3 &v2) {
-		glm::dvec3 e1 = v1 - v0;
-		glm::dvec3 e2 = v2 - v0;
-		return glm::normalize(glm::cross(e2, e1));
-	}
-	inline double triangle_area(const glm::dvec3 &p0, const glm::dvec3 &p1, const glm::dvec3 &p2) {
-		auto va = p0 - p1;
-		auto vb = p2 - p1;
-		return glm::length(glm::cross(va, vb)) * 0.5;
 	}
 
 	struct Luminaire {

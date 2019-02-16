@@ -84,8 +84,7 @@ namespace rt {
 		}
 
 		glm::dvec3 bxdf(const glm::dvec3 &wo, const glm::dvec3 &wi, const ShadingPoint &shadingPoint) const override {
-			// wo, wiは法線に対して同じ向きである必要がある
-			// 面から光はリークしない
+			// wo, wiは面をまたぐ場合の寄与は0
 			if (glm::dot(shadingPoint.Ng, wi) * glm::dot(shadingPoint.Ng, wo) < 0.0) {
 				return glm::dvec3(0.0);
 			}
@@ -103,6 +102,10 @@ namespace rt {
 			return CosThetaProportionalSampler::sample(random, isNormalFlipped ? -shadingPoint.Ng : shadingPoint.Ng);
 		}
 		virtual double pdf(const glm::dvec3 &wo, const glm::dvec3 &sampled_wi, const ShadingPoint &shadingPoint) const override {
+			// wo, wiは面をまたぐ場合の確率密度は0
+			if (glm::dot(shadingPoint.Ng, sampled_wi) * glm::dot(shadingPoint.Ng, wo) < 0.0) {
+				return 0.0;
+			}
 			bool isNormalFlipped = glm::dot(sampled_wi, shadingPoint.Ng) < 0.0;
 			return CosThetaProportionalSampler::pdf(sampled_wi, isNormalFlipped ? -shadingPoint.Ng : shadingPoint.Ng);
 		}

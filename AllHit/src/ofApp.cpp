@@ -28,6 +28,42 @@ static void filter_function(const struct RTCFilterFunctionNArguments *argument) 
 	custom->i++;
 }
 
+inline bool intersect_ray_triangle(const glm::dvec3 &orig, const glm::dvec3 &dir, const glm::dvec3 &v0, const glm::dvec3 &v1, const glm::dvec3 &v2, double *tmin)
+{
+	const double kEpsilon = 1.0e-6;
+
+	glm::dvec3 v0v1 = v1 - v0;
+	glm::dvec3 v0v2 = v2 - v0;
+	glm::dvec3 pvec = glm::cross(dir, v0v2);
+	double det = glm::dot(v0v1, pvec);
+
+	if (fabs(det) < kEpsilon) {
+		return false;
+	}
+
+	double invDet = 1.0 / det;
+
+	glm::dvec3 tvec = orig - v0;
+	double u = glm::dot(tvec, pvec) * invDet;
+	if (u < 0.0 || u > 1.0) {
+		return false;
+	}
+
+	glm::dvec3 qvec = glm::cross(tvec, v0v1);
+	double v = glm::dot(dir, qvec) * invDet;
+	if (v < 0.0 || u + v > 1.0) {
+		return false;
+	}
+
+	double t = glm::dot(v0v2, qvec) * invDet;
+
+	if (t < 0.0) {
+		return false;
+	}
+	*tmin = t;
+	return true;
+}
+
 //--------------------------------------------------------------
 void ofApp::setup(){
 	_camera.setNearClip(0.1f);
@@ -103,6 +139,8 @@ void ofApp::draw() {
 
 	drawAlembicScene(_scene.get(), ofMesh(), false /*draw camera*/);
 
+	std::vector<glm::dvec3> ros;
+	std::vector<glm::dvec3> rds;
 
 	for (auto o : _scene->objects) {
 		if (o->visible == false) {
@@ -118,46 +156,95 @@ void ofApp::draw() {
 			glm::vec3 N;
 			N_attrib->get(i, glm::value_ptr(N));
 
-			RTCRayHit rayhit;
-			rayhit.ray.org_x = P.x;
-			rayhit.ray.org_y = P.y;
-			rayhit.ray.org_z = P.z;
-			rayhit.ray.dir_x = N.x;
-			rayhit.ray.dir_y = N.y;
-			rayhit.ray.dir_z = N.z;
-			rayhit.ray.time = 0.0f;
+			ros.push_back(P);
+			rds.push_back(N);
+		}
+	}
 
-			rayhit.ray.tfar = FLT_MAX;
-			rayhit.ray.tnear = 0.0f;
+	for (int i = 0; i < ros.size(); ++i) {
+		glm::vec3 ro = ros[i];
+		glm::vec3 rd = rds[i];
 
-			rayhit.ray.mask = 0;
-			rayhit.ray.id = 0;
-			rayhit.ray.flags = 0;
-			rayhit.hit.geomID = RTC_INVALID_GEOMETRY_ID;
-			rayhit.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;
-			CustomContext context;
-			rtcInitIntersectContext(&context);
-			context.filter = &filter_function;
-
-			// Intersectは順序はあくまで近傍から。アルファテストの場合はこちらのほうがいいだろう
-			// rtcIntersect1(_embreeScene.get(), &context, &rayhit);
-
-			// Occludedの場合は順序は気にされない。ALL-Hitならこちらのほうが有力か
-			rtcOccluded1(_embreeScene.get(), &context, &rayhit.ray);
-
-			RT_ASSERT(rayhit.ray.tfar == FLT_MAX);
-
-			if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID) {
-				ofSetColor(128);
-				ofDrawLine(P, P + N * 10.0f);
+		for (auto o : _scene->objects) {
+			if (o->visible == false) {
+				continue;
 			}
-			else {
-				ofSetColor(255, 0, 0);
-				float tfar = rayhit.ray.tfar;
-				ofDrawLine(P, P + N * tfar);
+			auto polymesh = o.as_polygonMesh();
+			if (polymesh == nullptr) {
+				continue;
+			}
+			for (int i = 0; i < polymesh->indices.size(); i += 3) {
+				auto to = [](houdini_alembic::Vector3f p) {
+					return glm::dvec3(p.x, p.y, p.z);
+				};
+				glm::dvec3 p0 = to(polymesh->P[polymesh->indices[i]]);
+				glm::dvec3 p1 = to(polymesh->P[polymesh->indices[i + 1]]);
+				glm::dvec3 p2 = to(polymesh->P[polymesh->indices[i + 2]]);
+
+				double tmin;
+				if (intersect_ray_triangle(ro, rd, p0, p1, p2, &tmin)) {
+					ofSetColor(255, 0, 0);
+					ofDrawLine(ro, ro + rd * tmin);
+					ofDrawSphere(ro + rd * tmin, 0.05f);
+				}
 			}
 		}
 	}
+
+	//for (auto o : _scene->objects) {
+	//	if (o->visible == false) {
+	//		continue;
+	//	}
+	//	auto point = o.as_point();
+	//	if (point == nullptr) {
+	//		continue;
+	//	}
+	//	auto N_attrib = point->points.column_as_vector3("N");
+	//	for (int i = 0; i < point->P.size(); ++i) {
+	//		glm::vec3 P = { point->P[i].x, point->P[i].y, point->P[i].z};
+	//		glm::vec3 N;
+	//		N_attrib->get(i, glm::value_ptr(N));
+
+	//		RTCRayHit rayhit;
+	//		rayhit.ray.org_x = P.x;
+	//		rayhit.ray.org_y = P.y;
+	//		rayhit.ray.org_z = P.z;
+	//		rayhit.ray.dir_x = N.x;
+	//		rayhit.ray.dir_y = N.y;
+	//		rayhit.ray.dir_z = N.z;
+	//		rayhit.ray.time = 0.0f;
+
+	//		rayhit.ray.tfar = FLT_MAX;
+	//		rayhit.ray.tnear = 0.0f;
+
+	//		rayhit.ray.mask = 0;
+	//		rayhit.ray.id = 0;
+	//		rayhit.ray.flags = 0;
+	//		rayhit.hit.geomID = RTC_INVALID_GEOMETRY_ID;
+	//		rayhit.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;
+	//		CustomContext context;
+	//		rtcInitIntersectContext(&context);
+	//		context.filter = &filter_function;
+
+	//		// Intersectは順序はあくまで近傍から。アルファテストの場合はこちらのほうがいいだろう
+	//		// rtcIntersect1(_embreeScene.get(), &context, &rayhit);
+
+	//		// Occludedの場合は順序は気にされない。ALL-Hitならこちらのほうが有力か
+	//		rtcOccluded1(_embreeScene.get(), &context, &rayhit.ray);
+
+	//		RT_ASSERT(rayhit.ray.tfar == FLT_MAX);
+
+	//		if (rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID) {
+	//			ofSetColor(128);
+	//			ofDrawLine(P, P + N * 10.0f);
+	//		}
+	//		else {
+	//			ofSetColor(255, 0, 0);
+	//			float tfar = rayhit.ray.tfar;
+	//			ofDrawLine(P, P + N * tfar);
+	//		}
+	//	}
+	//}
 
 	_camera.end();
 
