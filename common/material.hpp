@@ -2,6 +2,8 @@
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 #include "orthonormal_basis.hpp"
+#include "assertion.hpp"
+
 namespace rt {
 	class BxDF;
 
@@ -107,7 +109,9 @@ namespace rt {
 				return 0.0;
 			}
 			bool isNormalFlipped = glm::dot(sampled_wi, shadingPoint.Ng) < 0.0;
-			return CosThetaProportionalSampler::pdf(sampled_wi, isNormalFlipped ? -shadingPoint.Ng : shadingPoint.Ng);
+			auto p = CosThetaProportionalSampler::pdf(sampled_wi, isNormalFlipped ? -shadingPoint.Ng : shadingPoint.Ng);
+			RT_ASSERT(0.0 <= p);
+			return p;
 		}
 	};
 }

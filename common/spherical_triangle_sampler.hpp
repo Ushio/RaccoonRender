@@ -23,7 +23,7 @@ namespace rt {
 			_alpha = std::acos(glm::dot(-_nAB, _nCA));
 			_beta = std::acos(glm::dot(-_nBC, _nAB));
 			_gamma = std::acos(glm::dot(-_nCA, _nBC));
-			_sr = _alpha + _beta + _gamma - glm::pi<float>();
+			_sr = _alpha + _beta + _gamma - glm::pi<double>();
 		}
 
 		double solidAngle() const {
@@ -54,7 +54,7 @@ namespace rt {
 				return glm::normalize(x - glm::dot(x, y) * y);
 			};
 
-			glm::dvec3 C_hat = _A * cos_b_hat + sqrt(1.0 - cos_b_hat * cos_b_hat) * ortho_vector(_C, _A);
+			glm::dvec3 C_hat = _A * cos_b_hat + sqrt(std::max(1.0 - cos_b_hat * cos_b_hat, 0.0)) * ortho_vector(_C, _A);
 			double cosTheta = 1.0 - xi_v * (1.0 - glm::dot(C_hat, _B));
 			glm::dvec3 P = cosTheta * _B + sqrt(std::max(1.0f - cosTheta * cosTheta, 0.0)) * ortho_vector(C_hat, _B);
 

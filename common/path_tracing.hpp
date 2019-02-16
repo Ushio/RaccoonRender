@@ -58,36 +58,50 @@ namespace rt {
 
 	class LuminaireSampler {
 	public:
-		void prepare(const std::vector<Luminaire> &luminaires, glm::dvec3 o) {
+		void prepare(const std::vector<Luminaire> &luminaires, glm::dvec3 o, glm::dvec3 n, bool brdf) {
 			_o = o;
+			_n = n;
+			_brdf = brdf;
 			_selector.clear();
 			_canSample = false;
 
-			for (const Luminaire &L : luminaires) {
-				// TODO 三角形が全部裏側のケース
-				//double projected_area;
-				//if (L.plane.signed_distance(o) < 1.0e-6) {
-				//	// サンプルしようとする面に存在するケース
-				//	projected_area = 0.0;
-				//}
-				//else {
-				//	glm::dvec3 d = L.center - o;
-				//	double distance_sqared = glm::length2(d);
-				//	d /= std::sqrt(distance_sqared);
-				//	projected_area = glm::abs(glm::dot(d, L.Ng)) * L.area / distance_sqared;
-				//}
-				//if (projected_area > 0.0) {
-				//	_canSample = true;
-				//}
-				//_selector.add(projected_area);
+			PlaneEquation brdf_plane;
+			brdf_plane.from_point_and_normal(o, n);
 
-				if (1.0e-6 < L.plane.signed_distance(o)) {
-					_canSample = true;
-					_selector.add(1.0);
+			for (const Luminaire &L : luminaires) {
+				glm::dvec3 d = L.center - o;
+				double distance_sqared = glm::length2(d);
+				d /= std::sqrt(distance_sqared);
+				double projected_area = glm::abs(glm::dot(d, L.Ng)) * L.area / distance_sqared;
+
+				if (L.backenable) {
+					// サンプル面にoがある場合のみ棄却
+					if (std::abs(L.plane.signed_distance(o)) < 1.0e-3) {
+						projected_area = 0.0;
+					}
 				}
 				else {
-					_selector.add(0.0);
+					// サンプル面に加え裏面も棄却
+					if (L.plane.signed_distance(o) < 1.0e-3) {
+						projected_area = 0.0;
+					}
 				}
+
+				// 見えている頂点の数で面積のヒューリスティックを調整する
+				if (_brdf) {
+					int frontCount = 0;
+					for (int i = 0; i < 3; ++i) {
+						if (0.0 < brdf_plane.signed_distance(L.points[i])) {
+							frontCount++;
+						}
+					}
+					projected_area *= (1.0 / 3.0) * frontCount;
+				}
+
+				if (1.0e-3 < projected_area) {
+					_canSample = true;
+				}
+				_selector.add(projected_area);
 			}
 		}
 
@@ -97,23 +111,53 @@ namespace rt {
 				double sP = _selector.probability(i);
 				double tmin;
 				if (0.0 < sP && intersect_ray_triangle(_o, wi, luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], &tmin)) {
-					//SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
-					//p += sP * (1.0 / sSampler.solidAngle());
+					SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+					p += sP * (1.0 / sSampler.solidAngle());
 
-					double pA = 1.0 / luminaires[i].area;
-					double pW = pA * (tmin * tmin) / glm::abs(glm::dot(-wi, luminaires[i].Ng));
-					p += sP * pW;
+					//double pA = 1.0 / luminaires[i].area;
+					//double pW = pA * (tmin * tmin) / glm::abs(glm::dot(-wi, luminaires[i].Ng));
+					//p += sP * pW;
+
+					//if (glm::two_pi<double>() * 0.1 < sP) {
+					//	SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+					//	p += sP * (1.0 / sSampler.solidAngle());
+					//}
+					//else {
+					//	double pA = 1.0 / luminaires[i].area;
+					//	double pW = pA * (tmin * tmin) / glm::abs(glm::dot(-wi, luminaires[i].Ng));
+					//	p += sP * pW;
+					//}
 				}
 			}
 			return p;
 		}
 		glm::dvec3 sample(const std::vector<Luminaire> &luminaires, PeseudoRandom *random) const {
 			int i = _selector.sample(random);
-			//SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
-			//return sSampler.sample_direction(random->uniform(), random->uniform());
-			auto sampler = uniform_on_triangle(random->uniform(), random->uniform());
-			auto p_on_triangle = sampler.evaluate(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2]);
-			return glm::normalize(p_on_triangle - _o);
+
+			SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+			double a = random->uniform();
+			double b = random->uniform();
+			auto wi = sSampler.sample_direction(a, b);
+			
+			//auto sampler = uniform_on_triangle(random->uniform(), random->uniform());
+			//auto p_on_triangle = sampler.evaluate(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2]);
+			//auto wi = glm::normalize(p_on_triangle - _o);
+
+			//glm::dvec3 wi;
+			//if (glm::two_pi<double>() * 0.1 < _selector.probability(i)) {
+			//	SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+			//	double a = random->uniform();
+			//	double b = random->uniform();
+			//	wi = sSampler.sample_direction(a, b);
+			//}
+			//else {
+			//	auto sampler = uniform_on_triangle(random->uniform(), random->uniform());
+			//	auto p_on_triangle = sampler.evaluate(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2]);
+			//	wi = glm::normalize(p_on_triangle - _o);
+			//}
+
+			RT_ASSERT(glm::all(glm::isfinite(wi)));
+			return wi;
 		}
 		
 		bool canSample() const {
@@ -122,6 +166,8 @@ namespace rt {
 	private:
 		bool _canSample = false;
 		glm::dvec3 _o;
+		glm::dvec3 _n;
+		bool _brdf = true;
 		ValueProportionalSampler<double> _selector;
 	};
 
@@ -174,11 +220,11 @@ namespace rt {
 		glm::dvec3 Lo;
 		glm::dvec3 T(1.0);
 
-		int focuPixelx = 180;
-		int focuPixely = 334;
-		if (px == focuPixelx && py == focuPixely) {
-			printf("");
-		}
+		//int focuPixelx = 180;
+		//int focuPixely = 334;
+		//if (px == focuPixelx && py == focuPixely) {
+		//	printf("");
+		//}
 
 		// double mis_weight = 1.0;
 
@@ -190,23 +236,26 @@ namespace rt {
 			glm::dvec3 wo = -rd;
 
 			if (scene->intersect(ro, rd, &shadingPoint, &tmin)) {
+				RT_ASSERT(0.0 <= tmin);
+
 				auto p = ro + rd * (double)tmin;
 
 				shadingPoint.Ng = glm::normalize(shadingPoint.Ng);
 				glm::dvec3 wi;
+				bool backside = glm::dot(wo, shadingPoint.Ng) < 0.0;
 
 				static thread_local LuminaireSampler directSampler;
-				directSampler.prepare(scene->luminaires(), p);
+				directSampler.prepare(scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
 
 				double P_Direct = directSampler.canSample() ? 0.5 : 0.0;
-				//bool is_direct;
+				bool is_direct;
 
 				if (random->uniform() < P_Direct) {
-					//is_direct = true;
+					is_direct = true;
 					wi = directSampler.sample(scene->luminaires(), random);
 				}
 				else {
-					//is_direct = false;
+					is_direct = false;
 					wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
 				}
 
@@ -218,6 +267,9 @@ namespace rt {
 				}
 				double pdf = P_Direct * pdf_direct
 					+ (1.0 - P_Direct) * pdf_bxdf;
+				RT_ASSERT(0.0 <= pdf);
+				RT_ASSERT(0.0 <= pdf_direct);
+				RT_ASSERT(0.0 <= pdf_bxdf);
 
 				// もっともシンプルなやりかた。これだとうまくいく
 				//CailSampler directSampler(p);
@@ -286,6 +338,10 @@ namespace rt {
 
 				glm::dvec3 contribution = emission * T;
 
+				RT_ASSERT(0.0 <= bxdf.x);
+				RT_ASSERT(0.0 <= bxdf.y);
+				RT_ASSERT(0.0 <= bxdf.z);
+
 				Lo += contribution;
 				T *= bxdf * cosTheta / pdf;
 
@@ -293,13 +349,13 @@ namespace rt {
 				RT_ASSERT(glm::abs(glm::length2(wo) - 1.0) < 1.0e-5);
 				RT_ASSERT(glm::abs(glm::length2(shadingPoint.Ng) - 1.0) < 1.0e-5);
 
-				if (glm::all(glm::lessThanEqual(T, glm::dvec3(0.0)))) {
-					break;
-				}
-
 				// ロシアンルーレット
 				double max_compornent = glm::compMax(T);
+				if (0.0 <= max_compornent == false) {
+					std::cout << px << "," << py << std::endl;
+				}
 				RT_ASSERT(0.0 <= max_compornent);
+
 				double continue_p = i < 5 ? 1.0 : glm::min(max_compornent, 1.0);
 				if (continue_p < random->uniform()) {
 					// reject
@@ -401,6 +457,10 @@ namespace rt {
 				// serial_for(tbb::blocked_range<int>(0, _image.height()), [&](const tbb::blocked_range<int> &range) {
 				for (int y = range.begin(); y < range.end(); ++y) {
 					for (int x = 0; x < _image.width(); ++x) {
+						//if (x != 264 || y != 263) {
+						//	continue;
+						//}
+
 						PeseudoRandom *random = _image.random(x, y);
 						glm::dvec3 o;
 						glm::dvec3 d;
