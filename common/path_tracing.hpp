@@ -109,6 +109,8 @@ namespace rt {
 			PlaneEquation<double> brdf_plane;
 			brdf_plane.from_point_and_normal(o, n);
 
+			// _sr_sample.clear();
+
 			for (const Luminaire &L : *luminaires) {
 				bool rejection = false;
 
@@ -153,6 +155,11 @@ namespace rt {
 					_canSample = true;
 				}
 				_selector.add(projected_area);
+
+				// 2π が半球なので、それを基準に
+				// _sr_sample.push_back(glm::two_pi<double>() * 0.01 < projected_area);
+				// _sr_sample.push_back(false);
+				// _sr_sample.push_back(true);
 			}
 		}
 
@@ -163,14 +170,14 @@ namespace rt {
 				double sP = _selector.probability(i);
 				double tmin;
 				if (0.0 < sP && intersect_ray_triangle(_o, wi, luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], &tmin)) {
-					//SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
-					//p += sP * (1.0 / sSampler.solidAngle());
+					SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+					p += sP * (1.0 / sSampler.solidAngle());
 
-					double pA = 1.0 / luminaires[i].area;
-					double pW = pA * (tmin * tmin) / glm::abs(glm::dot(-wi, luminaires[i].Ng));
-					p += sP * pW;
+					//double pA = 1.0 / luminaires[i].area;
+					//double pW = pA * (tmin * tmin) / glm::abs(glm::dot(-wi, luminaires[i].Ng));
+					//p += sP * pW;
 
-					//if (glm::two_pi<double>() * 0.1 < sP) {
+					//if (_sr_sample[i]) {
 					//	SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
 					//	p += sP * (1.0 / sSampler.solidAngle());
 					//}
@@ -187,17 +194,17 @@ namespace rt {
 			const std::vector<Luminaire> &luminaires = *_luminaires;
 			int i = _selector.sample(random);
 
-			//SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
-			//double a = random->uniform();
-			//double b = random->uniform();
-			//auto wi = sSampler.sample_direction(a, b);
+			SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+			double a = random->uniform();
+			double b = random->uniform();
+			auto wi = sSampler.sample_direction(a, b);
 			
-			auto sampler = uniform_on_triangle(random->uniform(), random->uniform());
-			auto p_on_triangle = sampler.evaluate(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2]);
-			auto wi = glm::normalize(p_on_triangle - _o);
+			//auto sampler = uniform_on_triangle(random->uniform(), random->uniform());
+			//auto p_on_triangle = sampler.evaluate(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2]);
+			//auto wi = glm::normalize(p_on_triangle - _o);
 
 			//glm::dvec3 wi;
-			//if (glm::two_pi<double>() * 0.1 < _selector.probability(i)) {
+			//if (_sr_sample[i]) {
 			//	SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
 			//	double a = random->uniform();
 			//	double b = random->uniform();
@@ -224,6 +231,7 @@ namespace rt {
 
 		bool _brdf = true;
 		ValueProportionalSampler<double> _selector;
+		// std::vector<bool> _sr_sample;
 	};
 
 	class CailSampler {
