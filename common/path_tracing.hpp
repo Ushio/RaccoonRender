@@ -54,9 +54,52 @@ namespace rt {
 		std::vector<XoroshiroPlus128> _randoms;
 	};
 
-	class LuminaireSampler {
+	class SolidAngleSampler {
 	public:
-		void prepare(const std::vector<glm::vec3> &luminaire_points, const std::vector<Luminaire> &luminaires, glm::dvec3 o, glm::dvec3 n, bool brdf) {
+		virtual double pdf(glm::dvec3 wi) const = 0;
+		virtual glm::dvec3 sample(PeseudoRandom *random) const = 0;
+	};
+	class MixtureSampler : public SolidAngleSampler {
+	public:
+		MixtureSampler(SolidAngleSampler *a, SolidAngleSampler *b, double mixture):_a(a), _b(b), _mixture(mixture) {
+
+		}
+		double pdf(glm::dvec3 wi) const {
+			return _mixture * _a->pdf(wi) + (1.0 - _mixture) * _b->pdf(wi);
+		}
+		glm::dvec3 sample(PeseudoRandom *random) const {
+			if (random->uniform() < _mixture) {
+				return _a->sample(random);
+			}
+			return _b->sample(random);
+		}
+	private:
+		SolidAngleSampler *_a = nullptr;
+		SolidAngleSampler *_b = nullptr;
+		double _mixture = 0.0;
+	};
+
+	class BxDFSampler : public SolidAngleSampler {
+	public:
+		BxDFSampler(glm::dvec3 wo, ShadingPoint shadingPoint):_wo(wo), _shadingPoint(shadingPoint) { }
+
+		bool canSample(glm::dvec3 wi) const {
+			return true;
+		}
+		double pdf(glm::dvec3 wi) const {
+			return _shadingPoint.bxdf->pdf(_wo, wi, _shadingPoint);
+		}
+		glm::dvec3 sample(PeseudoRandom *random) const {
+			return _shadingPoint.bxdf->sample(random, _wo, _shadingPoint);
+		}
+		glm::dvec3 _wo;
+		ShadingPoint _shadingPoint;
+	};
+
+	class LuminaireSampler : public SolidAngleSampler {
+	public:
+		void prepare(const std::vector<Luminaire> *luminaires, glm::dvec3 o, glm::dvec3 n, bool brdf) {
+			_luminaires = luminaires;
 			_o = o;
 			_n = n;
 			_brdf = brdf;
@@ -66,14 +109,7 @@ namespace rt {
 			PlaneEquation<double> brdf_plane;
 			brdf_plane.from_point_and_normal(o, n);
 
-			if (brdf) {
-				_brdf_visible_points.resize(luminaire_points.size());
-				for (int i = 0; i < luminaire_points.size(); ++i) {
-					_brdf_visible_points[i] = 0.0 < brdf_plane.signed_distance(luminaire_points[i]);
-				}
-			}
-
-			for (const Luminaire &L : luminaires) {
+			for (const Luminaire &L : *luminaires) {
 				bool rejection = false;
 
 				if (L.backenable) {
@@ -94,12 +130,9 @@ namespace rt {
 				if (_brdf && rejection == false) {
 					int frontCount = 0;
 					for (int i = 0; i < 3; ++i) {
-						if (_brdf_visible_points[L.shared_indices[i]]) {
+						if (0.0 < brdf_plane.signed_distance(L.points[i])) {
 							frontCount++;
 						}
-						//if (0.0 < brdf_plane.signed_distance(L.points[i])) {
-						//	frontCount++;
-						//}
 					}
 					scale_of_projected_area = (1.0 / 3.0) * frontCount;
 					if (frontCount == 0) {
@@ -113,6 +146,7 @@ namespace rt {
 					double distance_sqared = glm::length2(d);
 					d /= std::sqrt(distance_sqared);
 					projected_area = scale_of_projected_area * glm::abs(glm::dot(d, L.Ng)) * L.area / distance_sqared;
+					// projected_area = 1;
 				}
 
 				if (1.0e-3 < projected_area) {
@@ -122,7 +156,8 @@ namespace rt {
 			}
 		}
 
-		double pdf(const std::vector<Luminaire> &luminaires, glm::dvec3 wi) const {
+		double pdf(glm::dvec3 wi) const {
+			const std::vector<Luminaire> &luminaires = *_luminaires;
 			double p = 0.0;
 			for (int i = 0; i < luminaires.size(); ++i) {
 				double sP = _selector.probability(i);
@@ -148,7 +183,8 @@ namespace rt {
 			}
 			return p;
 		}
-		glm::dvec3 sample(const std::vector<Luminaire> &luminaires, PeseudoRandom *random) const {
+		glm::dvec3 sample(PeseudoRandom *random) const {
+			const std::vector<Luminaire> &luminaires = *_luminaires;
 			int i = _selector.sample(random);
 
 			//SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
@@ -181,10 +217,11 @@ namespace rt {
 			return _canSample;
 		}
 	private:
+		const std::vector<Luminaire> *_luminaires = nullptr;
 		bool _canSample = false;
 		glm::dvec3 _o;
 		glm::dvec3 _n;
-		std::vector<bool> _brdf_visible_points;
+
 		bool _brdf = true;
 		ValueProportionalSampler<double> _selector;
 	};
@@ -263,89 +300,26 @@ namespace rt {
 				glm::dvec3 wi;
 				bool backside = glm::dot(wo, shadingPoint.Ng) < 0.0;
 
+				SolidAngleSampler *sampler = nullptr;
+
 				static thread_local LuminaireSampler directSampler;
-				directSampler.prepare(scene->luminaire_points(), scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
+				directSampler.prepare(&scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
 
-				double P_Direct = directSampler.canSample() ? 0.5 : 0.0;
-				bool is_direct;
+				BxDFSampler bxdfSampler(wo, shadingPoint);
+				MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, 0.5);
 
-				if (random->uniform() < P_Direct) {
-					is_direct = true;
-					wi = directSampler.sample(scene->luminaires(), random);
+				if (directSampler.canSample()) {
+					sampler = &mixtureSampler;
 				}
 				else {
-					is_direct = false;
-					wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+					sampler = &bxdfSampler;
 				}
 
-				double pdf_direct = directSampler.pdf(scene->luminaires(), wi);
-				double pdf_bxdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+				RT_ASSERT(sampler);
+				wi = sampler->sample(random);
+				double pdf = sampler->pdf(wi);
 
-				if (directSampler.canSample() == false) {
-					pdf_direct = 0.0;
-				}
-				double pdf = P_Direct * pdf_direct
-					+ (1.0 - P_Direct) * pdf_bxdf;
-				RT_ASSERT(0.0 <= pdf);
-				RT_ASSERT(0.0 <= pdf_direct);
-				RT_ASSERT(0.0 <= pdf_bxdf);
-
-				// もっともシンプルなやりかた。これだとうまくいく
-				//CailSampler directSampler(p);
-				//double P_Direct = directSampler.canSample() ? 0.7 : 0.0;
-				//if (random->uniform() < P_Direct) {
-				//	wi = directSampler.sample(random);
-				//}
-				//else {
-				//	wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
-				//}
-
-				//double pdf_direct = directSampler.pdf(wi);
-				//double pdf_bxdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
-
-				//if (directSampler.canSample() == false) {
-				//	pdf_direct = 0.0;
-				//}
-				//double pdf = P_Direct * pdf_direct
-				//	+ (1.0 - P_Direct) * pdf_bxdf;
-				//
-				//RT_ASSERT(0.0 <= pdf);
-				//RT_ASSERT(0.0 <= pdf_direct);
-				//RT_ASSERT(0.0 <= pdf_bxdf);
-
-				//if (p.y > 0.9) {
-				//	RT_ASSERT(pdf_direct == 0.0);
-				//}
-	
-
-				//if (std::isfinite(pdf) == false) {
-				//	printf("");
-				//}
-
-				//----
-
-				//if (is_direct) {
-				//	if (pdf_direct == 0.0) {
-				//		directSampler.pdf(scene->luminaires(), wi);
-				//	}
-				//}
-
-				//double pdf;
-				//double mis_weight;
-				//auto sqr = [](double x) {
-				//	return x * x;
-				//};
-				//if (is_direct) {
-				//	mis_weight = sqr(pdf_direct) / (sqr(pdf_bxdf) + sqr(pdf_direct));
-				//	pdf = P_Direct * pdf_direct;
-				//}
-				//else {
-				//	mis_weight = sqr(pdf_bxdf) / (sqr(pdf_bxdf) + sqr(pdf_direct));
-				//	pdf = (1.0 - P_Direct) * pdf_bxdf / mis_weight;
-				//}
-
-
-				// BSDFのみ
+				// ナイーヴな方法
 				//wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
 				//double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
 
@@ -362,7 +336,13 @@ namespace rt {
 				RT_ASSERT(0.0 <= bxdf.z);
 
 				Lo += contribution;
-				T *= bxdf * cosTheta / pdf;
+
+				if (1.0e-6 < pdf) {
+					T *= bxdf * cosTheta / pdf;
+				}
+				else {
+					T = glm::dvec3(0.0);
+				}
 
 				RT_ASSERT(glm::abs(glm::length2(wi) - 1.0) < 1.0e-5);
 				RT_ASSERT(glm::abs(glm::length2(wo) - 1.0) < 1.0e-5);
@@ -381,30 +361,6 @@ namespace rt {
 					break;
 				}
 				T /= continue_p;
-				
-				//if (NoI < 0.0) {
-				//	printf("");
-				//}
-				//if (glm::any(glm::isnan(T))) {
-				//	printf("");
-				//}
-
-				//if (directSampler.canSample()) {
-				//	auto sqr = [](double x) {
-				//		return x * x;
-				//	};
-				//	if (is_direct) {
-				//		// mis_weight = sqr(pdf_direct) / (sqr(pdf_bxdf) + sqr(pdf_direct));
-				//		mis_weight = 2;
-				//	}
-				//	else {
-				//		mis_weight = 0;
-				//		// mis_weight = sqr(pdf_bxdf) / (sqr(pdf_bxdf) + sqr(pdf_direct));
-				//	}
-				//}
-				//else {
-				//	mis_weight = 1;
-				//}
 
 				// バイアスする方向は潜り込むときは逆転する
 				// が、必ずしもNoIだけで決めていいかどうか微妙なところがある気がするが・・・

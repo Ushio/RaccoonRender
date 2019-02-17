@@ -81,13 +81,13 @@ namespace rt {
 
 	struct Luminaire {
 		glm::dvec3 points[3];
-		uint32_t shared_indices[3];
 		glm::dvec3 Ng;
 		bool backenable = false;
 		PlaneEquation<double> plane;
 		double area = 0.0;
 		glm::dvec3 center;
 	};
+
 	class Scene {
 	public:
 		Scene(std::shared_ptr<houdini_alembic::AlembicScene> scene) : _scene(scene) {
@@ -179,10 +179,6 @@ namespace rt {
 		houdini_alembic::CameraObject *camera() {
 			return _camera;
 		}
-
-		const std::vector<glm::vec3> &luminaire_points() const{
-			return _luminaire_points;
-		}
 		const std::vector<Luminaire> &luminaires() const {
 			return _luminaires;
 		}
@@ -243,30 +239,12 @@ namespace rt {
 						L.backenable = luminaires_backenable->get(i) != 0;
 						L.Ng = triangle_normal_cw(L.points[0], L.points[1], L.points[2]);
 
-						L.plane.from_point_and_normal(L.points[0], L.Ng);
+						L.plane.from_point_and_normal(L.points[0], L.Ng); 
 						L.center = (L.points[0] + L.points[1] + L.points[2]) / 3.0;
 						L.area = triangle_area(L.points[0], L.points[1], L.points[2]);
 						RT_ASSERT(0.0 < L.area);
 
 						_luminaires.emplace_back(L);
-
-						// index作成, サイズが大きいなら加速データ構造が必要
-						for (int j = 0; j < 3; ++j) {
-							auto p = L.points[j];
-							uint32_t index = -1;
-							for (int k = 0; k < _luminaire_points.size(); ++k) {
-								if (glm::distance2(_luminaire_points[k], glm::vec3(p)) < 1.0e-6) {
-									index = k;
-								}
-							}
-							if (index == -1) {
-								L.shared_indices[j] = _luminaire_points.size();
-								_luminaire_points.emplace_back(p);
-							}
-							else {
-								L.shared_indices[j] = index;
-							}
-						}
 
 						luminaires_primitive_indices.push_back(i);
 					}
@@ -298,7 +276,6 @@ namespace rt {
 			// add to member
 			_polymeshes.emplace_back(std::move(polymesh));
 		}
-
 	private:
 		std::shared_ptr<houdini_alembic::AlembicScene> _scene;
 		houdini_alembic::CameraObject *_camera = nullptr;
@@ -307,7 +284,6 @@ namespace rt {
 		std::shared_ptr<RTCDeviceTy> _embreeDevice;
 		std::shared_ptr<RTCSceneTy> _embreeScene;
 
-		std::vector<glm::vec3> _luminaire_points;
 		std::vector<Luminaire> _luminaires;
 
 		mutable RTCIntersectContext _context;
