@@ -77,6 +77,7 @@ inline bool isPowerOfTwo(uint32_t n) {
 
 //--------------------------------------------------------------
 void ofApp::draw() {
+	static bool show_scene_preview = false;
 	static int frame = 0;
 
 	if (_renderer) {
@@ -139,7 +140,7 @@ void ofApp::draw() {
 
 	ofSetColor(255);
 
-	if (_alembicscene) {
+	if (_alembicscene && show_scene_preview) {
 		drawAlembicScene(_alembicscene.get(), _camera_model, true /*draw camera*/);
 	}
 
@@ -164,6 +165,8 @@ void ofApp::draw() {
 	ImGui::SetNextWindowBgAlpha(0.5f);
 
 	ImGui::Begin("settings", nullptr);
+	ImGui::Checkbox("scene preview", &show_scene_preview);
+	
 	ImGui::Text("frame : %d", frame);
 	ImGui::Separator();
 	ImGui::Text("%d sample, fps = %.3f", _renderer->stepCount(), ofGetFrameRate());

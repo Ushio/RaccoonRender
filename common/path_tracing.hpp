@@ -54,48 +54,65 @@ namespace rt {
 		std::vector<XoroshiroPlus128> _randoms;
 	};
 
-
-
 	class LuminaireSampler {
 	public:
-		void prepare(const std::vector<Luminaire> &luminaires, glm::dvec3 o, glm::dvec3 n, bool brdf) {
+		void prepare(const std::vector<glm::vec3> &luminaire_points, const std::vector<Luminaire> &luminaires, glm::dvec3 o, glm::dvec3 n, bool brdf) {
 			_o = o;
 			_n = n;
 			_brdf = brdf;
 			_selector.clear();
 			_canSample = false;
 
-			PlaneEquation brdf_plane;
+			PlaneEquation<double> brdf_plane;
 			brdf_plane.from_point_and_normal(o, n);
 
+			if (brdf) {
+				_brdf_visible_points.resize(luminaire_points.size());
+				for (int i = 0; i < luminaire_points.size(); ++i) {
+					_brdf_visible_points[i] = 0.0 < brdf_plane.signed_distance(luminaire_points[i]);
+				}
+			}
+
 			for (const Luminaire &L : luminaires) {
-				glm::dvec3 d = L.center - o;
-				double distance_sqared = glm::length2(d);
-				d /= std::sqrt(distance_sqared);
-				double projected_area = glm::abs(glm::dot(d, L.Ng)) * L.area / distance_sqared;
+				bool rejection = false;
 
 				if (L.backenable) {
 					// サンプル面にoがある場合のみ棄却
 					if (std::abs(L.plane.signed_distance(o)) < 1.0e-3) {
-						projected_area = 0.0;
+						rejection = true;
 					}
 				}
 				else {
 					// サンプル面に加え裏面も棄却
 					if (L.plane.signed_distance(o) < 1.0e-3) {
-						projected_area = 0.0;
+						rejection = true;
 					}
 				}
 
 				// 見えている頂点の数で面積のヒューリスティックを調整する
-				if (_brdf) {
+				double scale_of_projected_area = 1.0;
+				if (_brdf && rejection == false) {
 					int frontCount = 0;
 					for (int i = 0; i < 3; ++i) {
-						if (0.0 < brdf_plane.signed_distance(L.points[i])) {
+						if (_brdf_visible_points[L.shared_indices[i]]) {
 							frontCount++;
 						}
+						//if (0.0 < brdf_plane.signed_distance(L.points[i])) {
+						//	frontCount++;
+						//}
 					}
-					projected_area *= (1.0 / 3.0) * frontCount;
+					scale_of_projected_area = (1.0 / 3.0) * frontCount;
+					if (frontCount == 0) {
+						rejection = true;
+					}
+				}
+
+				double projected_area = 0.0;
+				if (rejection == false) {
+					glm::dvec3 d = L.center - o;
+					double distance_sqared = glm::length2(d);
+					d /= std::sqrt(distance_sqared);
+					projected_area = scale_of_projected_area * glm::abs(glm::dot(d, L.Ng)) * L.area / distance_sqared;
 				}
 
 				if (1.0e-3 < projected_area) {
@@ -111,12 +128,12 @@ namespace rt {
 				double sP = _selector.probability(i);
 				double tmin;
 				if (0.0 < sP && intersect_ray_triangle(_o, wi, luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], &tmin)) {
-					SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
-					p += sP * (1.0 / sSampler.solidAngle());
+					//SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+					//p += sP * (1.0 / sSampler.solidAngle());
 
-					//double pA = 1.0 / luminaires[i].area;
-					//double pW = pA * (tmin * tmin) / glm::abs(glm::dot(-wi, luminaires[i].Ng));
-					//p += sP * pW;
+					double pA = 1.0 / luminaires[i].area;
+					double pW = pA * (tmin * tmin) / glm::abs(glm::dot(-wi, luminaires[i].Ng));
+					p += sP * pW;
 
 					//if (glm::two_pi<double>() * 0.1 < sP) {
 					//	SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
@@ -134,14 +151,14 @@ namespace rt {
 		glm::dvec3 sample(const std::vector<Luminaire> &luminaires, PeseudoRandom *random) const {
 			int i = _selector.sample(random);
 
-			SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
-			double a = random->uniform();
-			double b = random->uniform();
-			auto wi = sSampler.sample_direction(a, b);
+			//SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+			//double a = random->uniform();
+			//double b = random->uniform();
+			//auto wi = sSampler.sample_direction(a, b);
 			
-			//auto sampler = uniform_on_triangle(random->uniform(), random->uniform());
-			//auto p_on_triangle = sampler.evaluate(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2]);
-			//auto wi = glm::normalize(p_on_triangle - _o);
+			auto sampler = uniform_on_triangle(random->uniform(), random->uniform());
+			auto p_on_triangle = sampler.evaluate(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2]);
+			auto wi = glm::normalize(p_on_triangle - _o);
 
 			//glm::dvec3 wi;
 			//if (glm::two_pi<double>() * 0.1 < _selector.probability(i)) {
@@ -167,6 +184,7 @@ namespace rt {
 		bool _canSample = false;
 		glm::dvec3 _o;
 		glm::dvec3 _n;
+		std::vector<bool> _brdf_visible_points;
 		bool _brdf = true;
 		ValueProportionalSampler<double> _selector;
 	};
@@ -208,9 +226,10 @@ namespace rt {
 			return 1.0e-3 < _plane.signed_distance(_o);
 		}
 		const double _size = 0.5;
-		PlaneEquation _plane;
+		PlaneEquation<double> _plane;
 		glm::dvec3 _o;
 	};
+
 
 	inline glm::dvec3 radiance(const rt::Scene *scene, glm::dvec3 ro, glm::dvec3 rd, PeseudoRandom *random, int px, int py) {
 		// const double kSceneEPS = scene.adaptiveEps();
@@ -245,7 +264,7 @@ namespace rt {
 				bool backside = glm::dot(wo, shadingPoint.Ng) < 0.0;
 
 				static thread_local LuminaireSampler directSampler;
-				directSampler.prepare(scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
+				directSampler.prepare(scene->luminaire_points(), scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
 
 				double P_Direct = directSampler.canSample() ? 0.5 : 0.0;
 				bool is_direct;

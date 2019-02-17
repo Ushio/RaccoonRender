@@ -147,7 +147,7 @@ TEST_CASE("PlaneEquation", "[PlaneEquation]") {
 			auto n = rt::sample_on_unit_sphere(&random);
 			glm::dvec3 point_on_plane = { random.uniform(), random.uniform(), random.uniform() };
 
-			rt::PlaneEquation p;
+			rt::PlaneEquation<double> p;
 			p.from_point_and_normal(point_on_plane, n);
 			REQUIRE(p.signed_distance(point_on_plane) == Approx(0.0).margin(1.0e-9));
 
@@ -235,7 +235,7 @@ TEST_CASE("triangle sampler", "[triangle sampler]") {
 		for (int j = 0; j < N; ++j) {
 			auto sample = rt::uniform_on_triangle(random.uniform(), random.uniform());
 			glm::dvec3 n = rt::triangle_normal_cw(p0, p1, p2);
-			rt::PlaneEquation plane;
+			rt::PlaneEquation<double> plane;
 			plane.from_point_and_normal(p0, n);
 
 			glm::dvec3 s = sample.evaluate(p0, p1, p2);
