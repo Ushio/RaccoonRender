@@ -61,18 +61,42 @@ namespace rt {
 	};
 	class MixtureSampler : public SolidAngleSampler {
 	public:
+		// P(a) = 1.0 - mixture, P(b) = mixture
+		// Like Lerp
 		MixtureSampler(SolidAngleSampler *a, SolidAngleSampler *b, double mixture):_a(a), _b(b), _mixture(mixture) {
 
 		}
 		double pdf(glm::dvec3 wi) const {
-			return _mixture * _a->pdf(wi) + (1.0 - _mixture) * _b->pdf(wi);
+			return (1.0 - _mixture) * _a->pdf(wi) + _mixture * _b->pdf(wi);
 		}
 		glm::dvec3 sample(PeseudoRandom *random) const {
-			if (random->uniform() < _mixture) {
+			if (_mixture < random->uniform()) {
 				return _a->sample(random);
 			}
 			return _b->sample(random);
 		}
+
+		// あまり効果が見られない。
+		//glm::dvec3 sample_power_heuristic(PeseudoRandom *random, double *pdf) const {
+		//	auto sqr = [](double x) {
+		//		return x * x;
+		//	};
+		//	double c_0 = (1.0 - _mixture);
+		//	double c_1 = _mixture;
+
+		//	if (_mixture < random->uniform()) {
+		//		auto wi = _a->sample(random);
+		//		double p_0 = _a->pdf(wi);
+		//		double p_1 = _b->pdf(wi);
+		//		*pdf = (sqr(c_0 * p_0) + sqr(c_1 * p_1)) / (c_0 * p_0);
+		//		return wi;
+		//	}
+		//	auto wi = _b->sample(random);
+		//	double p_0 = _a->pdf(wi);
+		//	double p_1 = _b->pdf(wi);
+		//	*pdf = (sqr(c_0 * p_0) + sqr(c_1 * p_1)) / (c_1 * p_1);
+		//	return wi;
+		//}
 	private:
 		SolidAngleSampler *_a = nullptr;
 		SolidAngleSampler *_b = nullptr;
@@ -164,6 +188,9 @@ namespace rt {
 		}
 
 		double pdf(glm::dvec3 wi) const {
+			if (_canSample == false) {
+				return 0.0;
+			}
 			const std::vector<Luminaire> &luminaires = *_luminaires;
 			double p = 0.0;
 			for (int i = 0; i < luminaires.size(); ++i) {
@@ -290,8 +317,6 @@ namespace rt {
 		//	printf("");
 		//}
 
-		// double mis_weight = 1.0;
-
 		constexpr int kDepth = 10;
 		for (int i = 0; i < kDepth; ++i) {
 			float tmin = 0.0f;
@@ -305,30 +330,22 @@ namespace rt {
 				auto p = ro + rd * (double)tmin;
 
 				shadingPoint.Ng = glm::normalize(shadingPoint.Ng);
-				glm::dvec3 wi;
 				bool backside = glm::dot(wo, shadingPoint.Ng) < 0.0;
-
-				SolidAngleSampler *sampler = nullptr;
 
 				static thread_local LuminaireSampler directSampler;
 				directSampler.prepare(&scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
 
 				BxDFSampler bxdfSampler(wo, shadingPoint);
-				MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, 0.5);
+				MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, directSampler.canSample() ? 0.5 : 0.0);
 
-				if (directSampler.canSample()) {
-					sampler = &mixtureSampler;
-				}
-				else {
-					sampler = &bxdfSampler;
-				}
+				glm::dvec3 wi = mixtureSampler.sample(random);
+				double pdf = mixtureSampler.pdf(wi);
 
-				RT_ASSERT(sampler);
-				wi = sampler->sample(random);
-				double pdf = sampler->pdf(wi);
+				// double pdf;
+				// wi = mixtureSampler.sample_power_heuristic(random, &pdf);
 
-				// ナイーヴな方法
-				//wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+				// ナイーヴ
+				//glm::dvec3 wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
 				//double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
 
 				glm::dvec3 bxdf = shadingPoint.bxdf->bxdf(wo, wi, shadingPoint);
