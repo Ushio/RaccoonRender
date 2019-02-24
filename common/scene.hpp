@@ -88,6 +88,20 @@ namespace rt {
 		glm::dvec3 center;
 	};
 
+	class EnvironmentMap {
+	public:
+		virtual ~EnvironmentMap() {}
+		virtual glm::dvec3 radiance(const glm::dvec3 &wi) const = 0;
+	};
+
+	class ConstantEnvmap : public EnvironmentMap {
+	public:
+		virtual glm::dvec3 radiance(const glm::dvec3 &wi) const {
+			return constant;
+		}
+		glm::dvec3 constant;
+	};
+
 	class Scene {
 	public:
 		Scene(std::shared_ptr<houdini_alembic::AlembicScene> scene) : _scene(scene) {
@@ -110,6 +124,9 @@ namespace rt {
 
 				if (auto polymesh = o.as_polygonMesh()) {
 					addPolymesh(polymesh);
+				}
+				if (auto point = o.as_point()) {
+					addPoint(point);
 				}
 			}
 			RT_ASSERT(_camera);
@@ -182,6 +199,13 @@ namespace rt {
 		const std::vector<Luminaire> &luminaires() const {
 			return _luminaires;
 		}
+
+		glm::dvec3 environment_radiance(const glm::dvec3 &wi) const {
+			if (_environmentMap) {
+				return _environmentMap->radiance(wi);
+			}
+			return glm::dvec3();
+		}
 	private:
 		class Polymesh {
 		public:
@@ -189,6 +213,22 @@ namespace rt {
 			std::vector<uint32_t> indices;
 			std::vector<glm::vec3> points;
 		};
+
+		void addPoint(houdini_alembic::PointObject *p) {
+			auto point_type = p->points.column_as_string("point_type");
+			if (point_type == nullptr) {
+				return;
+			}
+			for (int i = 0; i < point_type->rowCount(); ++i) {
+				if (point_type->get(i) == "constant_envmap") {
+					std::shared_ptr<ConstantEnvmap> env(new ConstantEnvmap());
+					if (auto r = p->points.column_as_vector3("radiance")) {
+						r->get(i, glm::value_ptr(env->constant));
+					}
+					_environmentMap = env;
+				}
+			}
+		}
 
 		void addPolymesh(houdini_alembic::PolygonMeshObject *p) {
 			bool isTriangleMesh = std::all_of(p->faceCounts.begin(), p->faceCounts.end(), [](int32_t f) { return f == 3; });
@@ -285,6 +325,8 @@ namespace rt {
 		std::shared_ptr<RTCSceneTy> _embreeScene;
 
 		std::vector<Luminaire> _luminaires;
+
+		std::shared_ptr<EnvironmentMap> _environmentMap;
 
 		mutable RTCIntersectContext _context;
 	};

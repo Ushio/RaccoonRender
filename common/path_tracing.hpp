@@ -393,6 +393,8 @@ namespace rt {
 				rd = wi;
 			}
 			else {
+				glm::dvec3 contribution = scene->environment_radiance(rd) * T;
+				Lo += contribution;
 				break;
 			}
 		}
