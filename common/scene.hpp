@@ -42,31 +42,49 @@ namespace rt {
 			return bxdf;
 		}
 	};
+	class WardDeclaration : public MaterialDeclaration {
+	public:
+		const char *name() const override {
+			return "Ward";
+		}
+		std::unique_ptr<BxDF> instanciate(const houdini_alembic::PolygonMeshObject *p, uint32_t primitive_index, const glm::dmat3 &xformInverseTransposed) const override {
+			std::unique_ptr<WardBRDF> bxdf(new WardBRDF());
+			if (auto tangentu = p->primitives.column_as_vector3("tangentu")) {
+				tangentu->get(primitive_index, glm::value_ptr(bxdf->tangentu));
+			}
+			if (auto tangentv = p->primitives.column_as_vector3("tangentv")) {
+				tangentv->get(primitive_index, glm::value_ptr(bxdf->tangentv));
+			}
+			return bxdf;
+		}
+	};
 	static std::vector<MaterialDeclaration *> MaterialDeclarations = {
 		new LambertianDeclaration(),
+		new WardDeclaration(),
 	};
-
+	
 	inline std::vector<std::unique_ptr<BxDF>> instanciateMaterials(houdini_alembic::PolygonMeshObject *p, const glm::dmat3 &xformInverseTransposed) {
 		std::vector<std::unique_ptr<BxDF>> materials;
 
 		auto material_string = p->primitives.column_as_string("material");
-		if (material_string == nullptr) {
-			return materials;
-		}
 
+		materials.reserve(p->primitives.rowCount());
 		for (uint32_t i = 0, n = p->primitives.rowCount(); i < n; ++i) {
 			std::unique_ptr<BxDF> mat;
 
-			const std::string m = material_string->get(i);
-			for (int j = 0; j < MaterialDeclarations.size(); ++j) {
-				if (m == MaterialDeclarations[j]->name()) {
-					mat = MaterialDeclarations[j]->instanciate(p, i, xformInverseTransposed);
-					break;
+			if (material_string) {
+				const std::string m = material_string->get(i);
+				for (int j = 0; j < MaterialDeclarations.size(); ++j) {
+					if (m == MaterialDeclarations[j]->name()) {
+						mat = MaterialDeclarations[j]->instanciate(p, i, xformInverseTransposed);
+						break;
+					}
 				}
 			}
 
+			// Error Material
 			if (!mat) {
-				mat = std::make_unique<LambertianBRDF>(glm::dvec3(), glm::dvec3(0.5), false);
+				mat = std::make_unique<LambertianBRDF>(glm::dvec3(), glm::dvec3(0.9, 0.1, 0.9), false);
 			}
 
 			materials.emplace_back(std::move(mat));

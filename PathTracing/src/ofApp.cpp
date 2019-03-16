@@ -48,6 +48,7 @@ void ofApp::setup() {
 	houdini_alembic::AlembicStorage storage;
 	std::string error_message;
 	storage.open(ofToDataPath("../../../scenes/CornelBox.abc"), error_message);
+	// storage.open(ofToDataPath("../../../scenes/CornelBox_AMD.abc"), error_message);
 
 	if (storage.isOpened()) {
 		std::string error_message;
@@ -160,9 +161,10 @@ void ofApp::draw() {
 	}
 
 	ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(600, 600), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(1100, 800), ImGuiCond_Appearing);
 	ImGui::SetNextWindowCollapsed(false, ImGuiCond_Appearing);
 	ImGui::SetNextWindowBgAlpha(0.5f);
+
 
 	ImGui::Begin("settings", nullptr);
 	ImGui::Checkbox("scene preview", &show_scene_preview);
@@ -174,6 +176,12 @@ void ofApp::draw() {
 	ImGui::Text("%d bad sample inf", _renderer->badSampleInfCount());
 	ImGui::Text("%d bad sample neg", _renderer->badSampleNegativeCount());
 	ImGui::Text("%d bad sample firefly", _renderer->badSampleFireflyCount());
+
+	if (ofGetFrameNum() % 10 == 0) {
+		_renderer->measureRaysPerSecond();
+	}
+	ImGui::Text("%.3f MRays/s", (double)_renderer->getRaysPerSecond() * 0.001 * 0.001);
+
 	if (_image.isAllocated()) {
 		ofxRaccoonImGui::image(_image);
 	}

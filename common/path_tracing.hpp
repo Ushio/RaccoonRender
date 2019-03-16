@@ -9,6 +9,7 @@
 #include "triangle_sampler.hpp"
 #include "value_prportional_sampler.hpp"
 #include "plane_equation.hpp"
+#include "stopwatch.hpp"
 
 namespace rt {
 	class Image {
@@ -32,10 +33,15 @@ namespace rt {
 			_pixels[index].color += c;
 			_pixels[index].sample++;
 		}
+		void addRays(int x, int y, int nRays) {
+			int index = y * _w + x;
+			_pixels[index].rays += nRays;
+		}
 
 		struct Pixel {
 			int sample = 0;
 			glm::dvec3 color;
+			uint32_t rays = 0;
 		};
 		const Pixel *pixel(int x, int y) const {
 			return _pixels.data() + y * _w + x;
@@ -303,7 +309,7 @@ namespace rt {
 	};
 
 
-	inline glm::dvec3 radiance(const rt::Scene *scene, glm::dvec3 ro, glm::dvec3 rd, PeseudoRandom *random, int px, int py) {
+	inline glm::dvec3 radiance(const rt::Scene *scene, glm::dvec3 ro, glm::dvec3 rd, PeseudoRandom *random, int px, int py, uint32_t *rays) {
 		// const double kSceneEPS = scene.adaptiveEps();
 		const double kSceneEPS = 1.0e-4;
 		const double kValueEPS = 1.0e-6;
@@ -316,6 +322,7 @@ namespace rt {
 		//if (px == focuPixelx && py == focuPixely) {
 		//	printf("");
 		//}
+		uint32_t shoot = 0;
 
 		constexpr int kDepth = 10;
 		for (int i = 0; i < kDepth; ++i) {
@@ -324,6 +331,7 @@ namespace rt {
 
 			glm::dvec3 wo = -rd;
 
+			shoot++;
 			if (scene->intersect(ro, rd, &shadingPoint, &tmin)) {
 				RT_ASSERT(0.0 <= tmin);
 
@@ -332,21 +340,21 @@ namespace rt {
 				shadingPoint.Ng = glm::normalize(shadingPoint.Ng);
 				bool backside = glm::dot(wo, shadingPoint.Ng) < 0.0;
 
-				static thread_local LuminaireSampler directSampler;
-				directSampler.prepare(&scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
+				//static thread_local LuminaireSampler directSampler;
+				//directSampler.prepare(&scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
 
-				BxDFSampler bxdfSampler(wo, shadingPoint);
-				MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, directSampler.canSample() ? 0.5 : 0.0);
+				//BxDFSampler bxdfSampler(wo, shadingPoint);
+				//MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, directSampler.canSample() ? 0.5 : 0.0);
 
-				glm::dvec3 wi = mixtureSampler.sample(random);
-				double pdf = mixtureSampler.pdf(wi);
+				//glm::dvec3 wi = mixtureSampler.sample(random);
+				//double pdf = mixtureSampler.pdf(wi);
 
 				// double pdf;
 				// wi = mixtureSampler.sample_power_heuristic(random, &pdf);
 
 				// ナイーヴ
-				//glm::dvec3 wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
-				//double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+				glm::dvec3 wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+				double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
 
 				glm::dvec3 bxdf = shadingPoint.bxdf->bxdf(wo, wi, shadingPoint);
 				glm::dvec3 emission = shadingPoint.bxdf->emission(wo, shadingPoint);
@@ -380,6 +388,9 @@ namespace rt {
 				}
 				RT_ASSERT(0.0 <= max_compornent);
 
+				// TODO Tはcontinue_pを含んでしまう？
+				// いや、でも合ってる気がする
+				// https://docs.google.com/file/d/0B8g97JkuSSBwUENiWTJXeGtTOHFmSm51UC01YWtCZw/edit?pli=1
 				double continue_p = i < 5 ? 1.0 : glm::min(max_compornent, 1.0);
 				if (continue_p < random->uniform()) {
 					// reject
@@ -398,6 +409,9 @@ namespace rt {
 				break;
 			}
 		}
+
+		*rays = shoot;
+
 		return Lo;
 	}
 
@@ -414,6 +428,8 @@ namespace rt {
 			_badSampleInfCount = 0;
 			_badSampleNegativeCount = 0;
 			_badSampleFireflyCount = 0;
+
+			_cpuTimer = Stopwatch();
 		}
 		void step() {
 			_steps++;
@@ -477,8 +493,8 @@ namespace rt {
 							+ dVector * (step_y * (y + v));
 
 						d = glm::normalize(p_objectPlane - o);
-						// _scene->camera.sampleRay(random, x, y, &o, &d);
-						auto r = radiance(_scene.get(), o, d, random, x, y);
+						uint32_t rays;
+						auto r = radiance(_scene.get(), o, d, random, x, y, &rays);
 
 						for (int i = 0; i < r.length(); ++i) {
 							if (glm::isnan(r[i])) {
@@ -499,6 +515,7 @@ namespace rt {
 							}
 						}
 						_image.add(x, y, r);
+						_image.addRays(x, y, rays);
 					}
 				}
 			});
@@ -521,6 +538,20 @@ namespace rt {
 			return _badSampleFireflyCount.load();
 		}
 
+		uint32_t getRaysPerSecond() const {
+			return _raysPerSecond;
+		}
+
+		void measureRaysPerSecond() {
+			uint32_t rays = 0;
+			for (int y = 0 ; y < _image.height(); ++y) {
+				for (int x = 0; x < _image.width(); ++x) {
+					rays += _image.pixel(x, y)->rays;
+				}
+			}
+			_raysPerSecond = rays / _cpuTimer.elapsed();
+		}
+
 		std::shared_ptr<rt::Scene> _scene;
 		Image _image;
 		int _steps = 0;
@@ -528,5 +559,8 @@ namespace rt {
 		std::atomic<int> _badSampleInfCount;
 		std::atomic<int> _badSampleNegativeCount;
 		std::atomic<int> _badSampleFireflyCount;
+
+		Stopwatch _cpuTimer;
+		uint32_t _raysPerSecond = 0;
 	};
 }
