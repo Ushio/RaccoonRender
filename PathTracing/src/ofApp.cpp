@@ -45,10 +45,10 @@ void ofApp::setup() {
 	_camera.setFarClip(100.0f);
 	_camera.setDistance(5.0f);
 
+	std::string abcPath = ofToDataPath("../../../scenes/CornelBox.abc", true);
 	houdini_alembic::AlembicStorage storage;
 	std::string error_message;
-	storage.open(ofToDataPath("../../../scenes/CornelBox.abc"), error_message);
-	// storage.open(ofToDataPath("../../../scenes/CornelBox_AMD.abc"), error_message);
+	storage.open(abcPath, error_message);
 
 	if (storage.isOpened()) {
 		std::string error_message;
@@ -60,7 +60,9 @@ void ofApp::setup() {
 
 	_camera_model.load("../../../scenes/camera_model.ply");
 
-	_scene = std::shared_ptr<rt::Scene>(new rt::Scene(_alembicscene));
+	std::filesystem::path absDirectory(abcPath);
+	absDirectory.remove_filename();
+	_scene = std::shared_ptr<rt::Scene>(new rt::Scene(_alembicscene, absDirectory));
 	_renderer = std::shared_ptr<rt::PTRenderer>(new rt::PTRenderer(_scene));
 }
 void ofApp::exit() {

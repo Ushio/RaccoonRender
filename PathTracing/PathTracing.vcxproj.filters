@@ -34,6 +34,9 @@
     <ClCompile Include="..\libs\houdini_alembic\houdini_alembic.cpp">
       <Filter>src\houdini_alembic</Filter>
     </ClCompile>
+    <ClCompile Include="..\libs\stb\stb.cpp">
+      <Filter>src\stb</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="src">
@@ -47,6 +50,9 @@
     </Filter>
     <Filter Include="src\common">
       <UniqueIdentifier>{8b5388b8-c3c8-4508-8930-910da0ed3df3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\stb">
+      <UniqueIdentifier>{1a6ad22b-15d1-44d9-9c17-9c9b1b62644f}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -112,6 +118,12 @@
     </ClInclude>
     <ClInclude Include="..\common\path_tracing.hpp">
       <Filter>src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\stb\stb_image.h">
+      <Filter>src\stb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\stb\stb_image_write.h">
+      <Filter>src\stb</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

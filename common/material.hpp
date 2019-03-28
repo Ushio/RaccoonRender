@@ -1,6 +1,9 @@
 ﻿#pragma once
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
+#include <rttr/registration>
+
+#include "peseudo_random.hpp"
 #include "orthonormal_basis.hpp"
 #include "assertion.hpp"
 
@@ -15,9 +18,18 @@ namespace rt {
 		const BxDF *bxdf = nullptr;
 	};
 
+	enum class GeoScope : uint8_t {
+		Points,
+		Vertices,
+		Primitives,
+	};
+	static const std::string kGeoScopeKey = "GeoScope";
+
 	class BxDF {
 	public:
 		virtual ~BxDF() {}
+
+		virtual BxDF *allocate() const = 0;
 
 		// evaluate emission
 		virtual glm::dvec3 emission(const glm::dvec3 &wo, const ShadingPoint &shadingPoint) const {
@@ -67,16 +79,20 @@ namespace rt {
 	class LambertianBRDF : public BxDF {
 	public:
 		LambertianBRDF() :Le(0.0), R(1.0) {}
-		LambertianBRDF(glm::dvec3 e, glm::dvec3 r, bool back) : Le(e), R(r), backEmission(back) {}
+		LambertianBRDF(glm::dvec3 e, glm::dvec3 r, bool back) : Le(e), R(r), BackEmission(back) {}
+
 		glm::dvec3 Le;
 		glm::dvec3 R;
-		bool backEmission = false;
+		int BackEmission = 0;
+		std::array<glm::dvec3, 3> Nv;
+		int ShadingNormal = 0;
 
-		glm::dvec3 Nv[3];
-		bool shadingNormal = false;
+		BxDF *allocate() const override {
+			return new LambertianBRDF(*this);
+		}
 
 		glm::dvec3 emission(const glm::dvec3 &wo, const ShadingPoint &shadingPoint) const override {
-			if (backEmission == false && glm::dot(shadingPoint.Ng, wo) < 0.0) {
+			if (BackEmission == 0 && glm::dot(shadingPoint.Ng, wo) < 0.0) {
 				return glm::dvec3(0.0);
 			}
 			return Le;
@@ -88,7 +104,7 @@ namespace rt {
 				return glm::dvec3(0.0);
 			}
 
-			if (shadingNormal) {
+			if (ShadingNormal) {
 				glm::dvec3 Ns = (1.0 - shadingPoint.u - shadingPoint.v) * Nv[0] + shadingPoint.u * Nv[1] + shadingPoint.v * Nv[2];
 				Ns = glm::normalize(Ns);
 				return glm::abs(glm::dot(Ns, wi) / glm::dot(shadingPoint.Ng, wi)) * glm::dvec3(R) * glm::one_over_pi<double>();
@@ -111,6 +127,19 @@ namespace rt {
 			return p;
 		}
 	};
+	RTTR_REGISTRATION
+	{
+		using namespace rttr;
+
+		registration::class_<LambertianBRDF>("Lambertian")
+		.constructor<>()
+		.method("allocate", &LambertianBRDF::allocate)
+		.property("Le", &LambertianBRDF::Le)(metadata(kGeoScopeKey, GeoScope::Primitives))
+		.property("Cd", &LambertianBRDF::R)(metadata(kGeoScopeKey, GeoScope::Primitives))
+		.property("BackEmission", &LambertianBRDF::BackEmission)(metadata(kGeoScopeKey, GeoScope::Primitives))
+		.property("N", &LambertianBRDF::Nv)(metadata(kGeoScopeKey, GeoScope::Vertices))
+		.property("ShadingNormal", &LambertianBRDF::ShadingNormal)(metadata(kGeoScopeKey, GeoScope::Primitives));
+	}
 
 	class WardBRDF : public BxDF {
 	public:

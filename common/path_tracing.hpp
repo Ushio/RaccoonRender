@@ -340,21 +340,18 @@ namespace rt {
 				shadingPoint.Ng = glm::normalize(shadingPoint.Ng);
 				bool backside = glm::dot(wo, shadingPoint.Ng) < 0.0;
 
-				//static thread_local LuminaireSampler directSampler;
-				//directSampler.prepare(&scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
+				static thread_local LuminaireSampler directSampler;
+				directSampler.prepare(&scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
 
-				//BxDFSampler bxdfSampler(wo, shadingPoint);
-				//MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, directSampler.canSample() ? 0.5 : 0.0);
+				BxDFSampler bxdfSampler(wo, shadingPoint);
+				MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, directSampler.canSample() ? 0.5 : 0.0);
 
-				//glm::dvec3 wi = mixtureSampler.sample(random);
-				//double pdf = mixtureSampler.pdf(wi);
-
-				// double pdf;
-				// wi = mixtureSampler.sample_power_heuristic(random, &pdf);
+				glm::dvec3 wi = mixtureSampler.sample(random);
+				double pdf = mixtureSampler.pdf(wi);
 
 				// ナイーヴ
-				glm::dvec3 wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
-				double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+				//glm::dvec3 wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+				//double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
 
 				glm::dvec3 bxdf = shadingPoint.bxdf->bxdf(wo, wi, shadingPoint);
 				glm::dvec3 emission = shadingPoint.bxdf->emission(wo, shadingPoint);
