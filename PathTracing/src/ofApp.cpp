@@ -45,6 +45,10 @@ void ofApp::setup() {
 	_camera.setFarClip(100.0f);
 	_camera.setDistance(5.0f);
 
+	loadScene();
+}
+
+void ofApp::loadScene() {
 	std::string abcPath = ofToDataPath("../../../scenes/CornelBox.abc", true);
 	houdini_alembic::AlembicStorage storage;
 	std::string error_message;
@@ -163,7 +167,7 @@ void ofApp::draw() {
 	}
 
 	ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(1100, 800), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(1100, 900), ImGuiCond_Appearing);
 	ImGui::SetNextWindowCollapsed(false, ImGuiCond_Appearing);
 	ImGui::SetNextWindowBgAlpha(0.5f);
 
@@ -192,7 +196,9 @@ void ofApp::draw() {
 
 //--------------------------------------------------------------
 void ofApp::keyPressed(int key) {
-
+	if (key == 'r') {
+		loadScene();
+	}
 }
 
 //--------------------------------------------------------------

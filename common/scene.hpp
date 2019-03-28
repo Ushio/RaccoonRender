@@ -112,19 +112,72 @@ namespace rt {
 		glm::dvec3 constant;
 	};
 
-	class ImageEnvmap : public EnvironmentMap {
+	class Texture2DF {
 	public:
-		ImageEnvmap(std::string filePath) {
+		Texture2DF(std::string filePath) {
 			int compornent_count;
-			std::unique_ptr<float, decltype(&stbi_image_free)> bitmap(stbi_loadf(filePath.c_str(), &_width, &_height, &compornent_count, 3), stbi_image_free);
+			std::unique_ptr<float, decltype(&stbi_image_free)> bitmap(stbi_loadf(filePath.c_str(), &_width, &_height, &compornent_count, 4), stbi_image_free);
 			float* pixels = bitmap.get();
+			_value.resize(_width * _height);
+			for (int y = 0; y < _height; ++y) {
+				for (int x = 0; x < _width; ++x) {
+					int index = y * _width + x;
+					for (int i = 0; i < 4; ++i) {
+						_value[index][i] = pixels[index * 4 + i];
+					}
+				}
+			}
 		}
-		virtual glm::dvec3 radiance(const glm::dvec3 &wi) const {
-			return glm::dvec3(0.8);
+		int width() const {
+			return _width;
+		}
+		int height() const {
+			return _height;
+		}
+
+		/*
+		v
+		^
+		|
+		o----> u
+		*/
+		glm::vec4 sample_repeat(float u, float v) const {
+			u = glm::fract(u);
+			v = glm::fract(v);
+
+			int x = u * _width;
+			int y = (1.0f - v) * _height;
+			x = glm::clamp(x, 0, _width - 1);
+			y = glm::clamp(y, 0, _height - 1);
+
+			return _value[y * _width + x];
 		}
 	private:
 		int _width = 0;
 		int _height = 0;
+		std::vector<glm::vec4> _value;
+	};
+
+	class ImageEnvmap : public EnvironmentMap {
+	public:
+		ImageEnvmap(std::string filePath):_texture(new Texture2DF(filePath)) {
+
+		}
+		virtual glm::dvec3 radiance(const glm::dvec3 &rd) const {
+			float z = rd.y;
+			float x = rd.z;
+			float y = rd.x;
+			float theta = std::acos(z);
+			float phi = atan2(y, x);
+			if (isfinite(theta) && isfinite(phi)) {
+				float u = phi / (2.0f * glm::pi<float>());
+				float v = theta / glm::pi<float>();
+				return _texture->sample_repeat(u, 1.0f - v);
+			}
+			return glm::dvec3(0.0f);
+		}
+	private:
+		std::unique_ptr<Texture2DF> _texture;
 	};
 
 	class Scene {

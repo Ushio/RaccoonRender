@@ -27,6 +27,8 @@ public:
 	void dragEvent(ofDragInfo dragInfo);
 	void gotMessage(ofMessage msg);
 
+	void loadScene();
+
 	ofEasyCam _camera;
 	ofImage _image;
 	ofMesh _camera_model;

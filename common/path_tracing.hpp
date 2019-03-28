@@ -506,7 +506,7 @@ namespace rt {
 								_badSampleNegativeCount++;
 								r[i] = 0.0;
 							}
-							if (10000.0 < r[i]) {
+							if (100000.0 < r[i]) {
 								_badSampleFireflyCount++;
 								r[i] = 0.0;
 							}
