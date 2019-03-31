@@ -184,7 +184,6 @@
     <PostBuildEvent />
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\libs\houdini_alembic\houdini_alembic.cpp" />
     <ClCompile Include="..\libs\ofxRaccoonImGui\imgui.cpp" />
     <ClCompile Include="..\libs\ofxRaccoonImGui\imgui_demo.cpp" />
     <ClCompile Include="..\libs\ofxRaccoonImGui\imgui_draw.cpp" />
@@ -198,8 +197,6 @@
     <ClCompile Include="src\ofApp.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\libs\houdini_alembic\alembic_preview.hpp" />
-    <ClInclude Include="..\libs\houdini_alembic\houdini_alembic.hpp" />
     <ClInclude Include="..\libs\ofxRaccoonImGui\imconfig.h" />
     <ClInclude Include="..\libs\ofxRaccoonImGui\imgui.h" />
     <ClInclude Include="..\libs\ofxRaccoonImGui\imgui_impl_glfw.h" />

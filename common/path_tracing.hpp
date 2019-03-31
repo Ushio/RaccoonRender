@@ -10,6 +10,7 @@
 #include "value_prportional_sampler.hpp"
 #include "plane_equation.hpp"
 #include "stopwatch.hpp"
+#include "alias_method.hpp"
 
 namespace rt {
 	class Image {
@@ -340,18 +341,32 @@ namespace rt {
 				shadingPoint.Ng = glm::normalize(shadingPoint.Ng);
 				bool backside = glm::dot(wo, shadingPoint.Ng) < 0.0;
 
-				static thread_local LuminaireSampler directSampler;
-				directSampler.prepare(&scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
+				// Explicit Connection To Envmap
+				if(true) {
+					auto env = scene->envmap();
+					glm::dvec3 light_wi = env->sample(random, shadingPoint.Ng);
+					double absCosTheta = glm::abs(glm::dot(shadingPoint.Ng, light_wi));
+					ShadingPoint ls;
+					float ltmin = std::numeric_limits<float>::max();
+					if (scene->intersect(p + 1.0e-4 * light_wi / absCosTheta, light_wi, &ls, &ltmin) == false) {
+						glm::dvec3 contribution = env->radiance(light_wi) * T * shadingPoint.bxdf->bxdf(wo, light_wi, shadingPoint) * absCosTheta / (double)env->pdf(light_wi, shadingPoint.Ng);
+						Lo += contribution;
+					}
+				}
 
-				BxDFSampler bxdfSampler(wo, shadingPoint);
-				MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, directSampler.canSample() ? 0.5 : 0.0);
+				// ここはもっと改良したい
+				//static thread_local LuminaireSampler directSampler;
+				//directSampler.prepare(&scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
 
-				glm::dvec3 wi = mixtureSampler.sample(random);
-				double pdf = mixtureSampler.pdf(wi);
+				//BxDFSampler bxdfSampler(wo, shadingPoint);
+				//MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, directSampler.canSample() ? 0.5 : 0.0);
+
+				//glm::dvec3 wi = mixtureSampler.sample(random);
+				//double pdf = mixtureSampler.pdf(wi);
 
 				// ナイーヴ
-				//glm::dvec3 wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
-				//double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+				glm::dvec3 wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+				double pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
 
 				glm::dvec3 bxdf = shadingPoint.bxdf->bxdf(wo, wi, shadingPoint);
 				glm::dvec3 emission = shadingPoint.bxdf->emission(wo, shadingPoint);
@@ -401,8 +416,14 @@ namespace rt {
 				rd = wi;
 			}
 			else {
-				glm::dvec3 contribution = scene->environment_radiance(rd) * T;
-				Lo += contribution;
+				//auto env = scene->envmap();
+				//glm::dvec3 contribution = env->radiance(rd) * T;
+				//Lo += contribution;
+				if (i == 0) {
+					auto env = scene->envmap();
+					glm::dvec3 contribution = env->radiance(rd) * T;
+					Lo += contribution;
+				}
 				break;
 			}
 		}

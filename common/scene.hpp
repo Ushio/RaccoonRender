@@ -4,7 +4,8 @@
 #include "assertion.hpp"
 #include "plane_equation.hpp"
 #include "triangle_util.hpp"
-#include "stb_image.h"
+#include "image2d.hpp"
+#include "alias_method.hpp"
 
 namespace rt {
 	inline std::vector<std::unique_ptr<BxDF>> instanciateMaterials(houdini_alembic::PolygonMeshObject *p, const glm::dmat3 &xformInverseTransposed) {
@@ -102,6 +103,8 @@ namespace rt {
 	public:
 		virtual ~EnvironmentMap() {}
 		virtual glm::dvec3 radiance(const glm::dvec3 &wi) const = 0;
+		virtual float pdf(const glm::dvec3 &rd, const glm::dvec3 &n) const = 0;
+		virtual glm::dvec3 sample(PeseudoRandom *random, const glm::dvec3 &n) const = 0;
 	};
 
 	class ConstantEnvmap : public EnvironmentMap {
@@ -109,75 +112,117 @@ namespace rt {
 		virtual glm::dvec3 radiance(const glm::dvec3 &wi) const {
 			return constant;
 		}
+		virtual float pdf(const glm::dvec3 &rd, const glm::dvec3 &n) const override {
+			return CosThetaProportionalSampler::pdf(rd, n);
+		}
+		virtual glm::dvec3 sample(PeseudoRandom *random, const glm::dvec3 &n) const override {
+			return CosThetaProportionalSampler::sample(random, n);
+		}
 		glm::dvec3 constant;
-	};
-
-	class Texture2DF {
-	public:
-		Texture2DF(std::string filePath) {
-			int compornent_count;
-			std::unique_ptr<float, decltype(&stbi_image_free)> bitmap(stbi_loadf(filePath.c_str(), &_width, &_height, &compornent_count, 4), stbi_image_free);
-			float* pixels = bitmap.get();
-			_value.resize(_width * _height);
-			for (int y = 0; y < _height; ++y) {
-				for (int x = 0; x < _width; ++x) {
-					int index = y * _width + x;
-					for (int i = 0; i < 4; ++i) {
-						_value[index][i] = pixels[index * 4 + i];
-					}
-				}
-			}
-		}
-		int width() const {
-			return _width;
-		}
-		int height() const {
-			return _height;
-		}
-
-		/*
-		v
-		^
-		|
-		o----> u
-		*/
-		glm::vec4 sample_repeat(float u, float v) const {
-			u = glm::fract(u);
-			v = glm::fract(v);
-
-			int x = u * _width;
-			int y = (1.0f - v) * _height;
-			x = glm::clamp(x, 0, _width - 1);
-			y = glm::clamp(y, 0, _height - 1);
-
-			return _value[y * _width + x];
-		}
-	private:
-		int _width = 0;
-		int _height = 0;
-		std::vector<glm::vec4> _value;
 	};
 
 	class ImageEnvmap : public EnvironmentMap {
 	public:
-		ImageEnvmap(std::string filePath):_texture(new Texture2DF(filePath)) {
+		ImageEnvmap(std::string filePath):_texture(new Image2D()) {
+			_texture->load(filePath.c_str());
 
+			// テスト用 クランプ
+			// _texture->clamp_rgb(0.0f, 20.0f);
+
+			const Image2D &image = *_texture;
+			std::vector<float> weights(image.width() * image.height());
+			for (int y = 0; y < image.height(); ++y) {
+				for (int x = 0; x < image.width(); ++x) {
+					auto radiance = image(x, y);
+					float Y = 0.2126f * radiance.x + 0.7152f * radiance.y + 0.0722f * radiance.z;
+					weights[y * image.width() + x] = Y;
+				}
+			}
+			_aliasMethod.prepare(weights);
 		}
-		virtual glm::dvec3 radiance(const glm::dvec3 &rd) const {
+		virtual glm::dvec3 radiance(const glm::dvec3 &rd) const override {
 			float z = rd.y;
 			float x = rd.z;
 			float y = rd.x;
 			float theta = std::acos(z);
 			float phi = atan2(y, x);
-			if (isfinite(theta) && isfinite(phi)) {
-				float u = phi / (2.0f * glm::pi<float>());
-				float v = theta / glm::pi<float>();
-				return _texture->sample_repeat(u, 1.0f - v);
+			if (phi < 0.0) {
+				phi += glm::two_pi<float>();
 			}
-			return glm::dvec3(0.0f);
+			// phi = 0.0 ~ 2.0 * pi
+
+			if (isfinite(theta) == false || isfinite(phi) == false) {
+				return glm::dvec3(0.0f);
+			}
+
+			RT_ASSERT(0.0 <= phi && phi <= glm::two_pi<float>());
+			
+			// 1.0f - is clockwise order envmap
+			float u = 1.0f - phi / (2.0f * glm::pi<float>());
+			float v = theta / glm::pi<float>();
+
+			// 1.0f - is texture coordinate problem
+			return _texture->sample_repeat(u, 1.0f - v);
+		}
+		float pdf(const glm::dvec3 &rd, const glm::dvec3 &n) const {
+			float z = rd.y;
+			float x = rd.z;
+			float y = rd.x;
+			float theta = std::acos(z);
+			float phi = atan2(y, x);
+
+			if (isfinite(theta) == false || isfinite(phi) == false) {
+				return 0.0f;
+			}
+
+			if (phi < 0.0) {
+				phi += glm::two_pi<float>();
+			}
+
+			// 1.0f - is clockwise order envmap
+			float u = 1.0f - phi / (2.0f * glm::pi<float>());
+			float v = theta / glm::pi<float>();
+
+			int ix = u * _texture->width();
+			int iy = v * _texture->height();
+			ix = glm::clamp(ix, 0, _texture->width() - 1);
+			iy = glm::clamp(iy, 0, _texture->height() - 1);
+
+			float theta_step = glm::pi<float>() / _texture->height();
+			float beg_theta = theta_step * iy;
+			float end_theta = beg_theta + theta_step;
+			float beg_y = cos(beg_theta);
+			float end_y = cos(end_theta);
+			float sr = (beg_y - end_y) * (glm::two_pi<float>() / _texture->width());
+
+			return (1.0f / sr) * _aliasMethod.probability(iy * _texture->width() + ix);
+		}
+		virtual glm::dvec3 sample(PeseudoRandom *random, const glm::dvec3 &n) const override {
+			const Image2D &image = *_texture;
+
+			int index = _aliasMethod.sample(random->uniform32f(), random->uniform32f());
+			int ix = index % image.width();
+			int iy = index / image.width();
+			float sample_x = ix + random->uniform32f();
+
+			float theta_step = glm::pi<float>() / image.height();
+			float beg_theta = theta_step * iy;
+			float end_theta = beg_theta + theta_step;
+			float beg_y = cos(beg_theta);
+			float end_y = cos(end_theta);
+
+			float phi = -glm::two_pi<float>() * (sample_x / image.width());
+
+			float y = glm::mix(beg_y, end_y, random->uniform32f());
+			float r_xz = std::sqrt(std::max(1.0f - y * y, 0.0f));
+
+			float x = r_xz * sin(phi);
+			float z = r_xz * cos(phi);
+			return glm::dvec3(x, y, z);
 		}
 	private:
-		std::unique_ptr<Texture2DF> _texture;
+		std::unique_ptr<Image2D> _texture;
+		AliasMethod _aliasMethod;
 	};
 
 	class Scene {
@@ -188,6 +233,9 @@ namespace rt {
 
 			_embreeScene = std::shared_ptr<RTCSceneTy>(rtcNewScene(_embreeDevice.get()), rtcReleaseScene);
 			rtcSetSceneBuildQuality(_embreeScene.get(), RTC_BUILD_QUALITY_HIGH);
+
+			// black envmap
+			_environmentMap = std::shared_ptr<ConstantEnvmap>(new ConstantEnvmap());
 			
 			for (auto o : scene->objects) {
 				if (o->visible == false) {
@@ -278,11 +326,8 @@ namespace rt {
 			return _luminaires;
 		}
 
-		glm::dvec3 environment_radiance(const glm::dvec3 &wi) const {
-			if (_environmentMap) {
-				return _environmentMap->radiance(wi);
-			}
-			return glm::dvec3();
+		EnvironmentMap *envmap() const {
+			return _environmentMap.get();
 		}
 	private:
 		class Polymesh {

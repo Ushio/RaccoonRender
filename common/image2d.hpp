@@ -8,6 +8,12 @@
 namespace rt {
 	class Image2D {
 	public:
+		void resize(int w, int h) {
+			_width = w;
+			_height = h;
+			_values.clear();
+			_values.resize(_width * _height);
+		}
 		// if succeeded return true
 		bool load(const char *filename) {
 			_values.clear();
@@ -29,6 +35,14 @@ namespace rt {
 			return true;
 		}
 
+		void clamp_rgb(float min_value, float max_value) {
+			for (int i = 0; i < _values.size(); ++i) {
+				_values[i].x = glm::clamp(_values[i].x, min_value, max_value);
+				_values[i].y = glm::clamp(_values[i].y, min_value, max_value);
+				_values[i].z = glm::clamp(_values[i].z, min_value, max_value);
+			}
+		}
+
 		bool has_area() const {
 			return !_values.empty();
 		}
@@ -48,6 +62,24 @@ namespace rt {
 			return _values[y * _width + x];
 		}
 		const glm::vec4 &operator()(int x, int y) const {
+			return _values[y * _width + x];
+		}
+
+		/*
+		v
+		^
+		|
+		o----> u
+		*/
+		glm::vec4 sample_repeat(float u, float v) const {
+			u = glm::fract(u);
+			v = glm::fract(v);
+
+			int x = u * _width;
+			int y = (1.0f - v) * _height;
+			x = glm::clamp(x, 0, _width - 1);
+			y = glm::clamp(y, 0, _height - 1);
+
 			return _values[y * _width + x];
 		}
 	private:
