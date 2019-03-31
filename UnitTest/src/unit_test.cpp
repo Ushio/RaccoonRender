@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #define CATCH_CONFIG_RUNNER
-#include "catch/catch.hpp"
+#include "catch2/catch.hpp"
 #include "ofMain.h"
 
 #include "online.hpp"

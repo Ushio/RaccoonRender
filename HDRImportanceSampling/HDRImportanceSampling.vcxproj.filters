@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="src\ofApp.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\main.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\houdini_alembic\houdini_alembic.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\ofxRaccoonImGui\imgui.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\ofxRaccoonImGui\imgui_demo.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\ofxRaccoonImGui\imgui_draw.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\ofxRaccoonImGui\imgui_impl_glfw.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\ofxRaccoonImGui\imgui_impl_opengl2.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\ofxRaccoonImGui\imgui_impl_opengl3.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\ofxRaccoonImGui\imgui_widgets.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\ofxRaccoonImGui\ofxRaccoonImGui.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libs\stb\stb.cpp">
+      <Filter>src\lib</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{d8376475-7454-4a24-b08a-aac121d3ad6f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\lib">
+      <UniqueIdentifier>{85391b96-690d-4411-9721-55ced906758f}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ofApp.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\houdini_alembic\alembic_preview.hpp">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\houdini_alembic\houdini_alembic.hpp">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\imconfig.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\imgui.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\imgui_impl_glfw.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\imgui_impl_opengl2.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\imgui_impl_opengl3.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\imgui_internal.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\imstb_rectpack.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\imstb_textedit.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\imstb_truetype.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\ofxRaccoonImGui\ofxRaccoonImGui.hpp">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\stb\stb_image.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libs\stb\stb_image_write.h">
+      <Filter>src\lib</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="icon.rc" />
+  </ItemGroup>
+</Project>

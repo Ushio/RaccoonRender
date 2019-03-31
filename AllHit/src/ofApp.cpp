@@ -181,7 +181,7 @@ void ofApp::draw() {
 				glm::dvec3 p1 = to(polymesh->P[polymesh->indices[i + 1]]);
 				glm::dvec3 p2 = to(polymesh->P[polymesh->indices[i + 2]]);
 
-				double tmin;
+				double tmin = std::numeric_limits<double>::max();
 				if (intersect_ray_triangle(ro, rd, p0, p1, p2, &tmin)) {
 					ofSetColor(255, 0, 0);
 					ofDrawLine(ro, ro + rd * tmin);
