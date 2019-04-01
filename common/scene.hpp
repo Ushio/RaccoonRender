@@ -128,31 +128,70 @@ namespace rt {
 
 			// テスト用 クランプ
 			// _texture->clamp_rgb(0.0f, 20.0f);
+			double theta_step = glm::pi<double>() / _texture->height();
 
+			// beg_theta ~ end_thetaの挟まれた領域
+			auto solid_angle_sliced_sphere = [](double beg_theta, double end_theta) {
+				double beg_y = std::cos(beg_theta);
+				double end_y = std::cos(end_theta);
+				return (beg_y - end_y) * glm::two_pi<double>();
+			};
+
+			// Selection Weight
 			const Image2D &image = *_texture;
-			std::vector<float> weights(image.width() * image.height());
+			std::vector<double> weights(image.width() * image.height());
 			for (int y = 0; y < image.height(); ++y) {
+				double beg_theta = theta_step * y;
+				double end_theta = beg_theta + theta_step;
+				double sr = solid_angle_sliced_sphere(beg_theta, end_theta) / _texture->width();
+
 				for (int x = 0; x < image.width(); ++x) {
 					auto radiance = image(x, y);
-					float Y = 0.2126f * radiance.x + 0.7152f * radiance.y + 0.0722f * radiance.z;
-					weights[y * image.width() + x] = Y;
+					double Y = 0.2126 * radiance.x + 0.7152 * radiance.y + 0.0722 * radiance.z;
+
+					weights[y * image.width() + x] = Y * sr;
 				}
 			}
 			_aliasMethod.prepare(weights);
+
+			// Precomputed PDF
+			_pdf.resize(image.width() * image.height());
+			for (int iy = 0; iy < image.height(); ++iy) {
+				double beg_theta = theta_step * iy;
+				double end_theta = beg_theta + theta_step;
+				double sr = solid_angle_sliced_sphere(beg_theta, end_theta) / _texture->width();
+
+				for (int ix = 0; ix < image.width(); ++ix) {
+					int index = iy * image.width() + ix;
+					double p = _aliasMethod.probability(index);
+					_pdf[index] = p * (1.0 / sr);
+				}
+			}
 		}
-		virtual glm::dvec3 radiance(const glm::dvec3 &rd) const override {
+
+		// always positive
+		// phi = 0.0 ~ 2.0 * pi
+		// theta = 0.0 ~ pi
+		bool spherical_coordinate_positive(glm::vec3 rd, float *theta, float *phi) const {
 			float z = rd.y;
 			float x = rd.z;
 			float y = rd.x;
-			float theta = std::acos(z);
-			float phi = atan2(y, x);
-			if (phi < 0.0) {
-				phi += glm::two_pi<float>();
+			*theta = std::acos(z);
+			*phi = std::atan2(y, x);
+			if (*phi < 0.0f) {
+				*phi += glm::two_pi<float>();
 			}
-			// phi = 0.0 ~ 2.0 * pi
+			if (isfinite(*theta) == false || isfinite(*phi) == false) {
+				return false;
+			}
+			return true;
+		}
 
-			if (isfinite(theta) == false || isfinite(phi) == false) {
-				return glm::dvec3(0.0f);
+		virtual glm::dvec3 radiance(const glm::dvec3 &rd) const override {
+			float theta;
+			float phi;
+			if (spherical_coordinate_positive(rd, &theta, &phi) == false) {
+				return glm::dvec3(0.0);
 			}
 
 			RT_ASSERT(0.0 <= phi && phi <= glm::two_pi<float>());
@@ -165,18 +204,10 @@ namespace rt {
 			return _texture->sample_repeat(u, 1.0f - v);
 		}
 		float pdf(const glm::dvec3 &rd, const glm::dvec3 &n) const {
-			float z = rd.y;
-			float x = rd.z;
-			float y = rd.x;
-			float theta = std::acos(z);
-			float phi = atan2(y, x);
-
-			if (isfinite(theta) == false || isfinite(phi) == false) {
+			float theta;
+			float phi;
+			if (spherical_coordinate_positive(rd, &theta, &phi) == false) {
 				return 0.0f;
-			}
-
-			if (phi < 0.0) {
-				phi += glm::two_pi<float>();
 			}
 
 			// 1.0f - is clockwise order envmap
@@ -188,14 +219,7 @@ namespace rt {
 			ix = glm::clamp(ix, 0, _texture->width() - 1);
 			iy = glm::clamp(iy, 0, _texture->height() - 1);
 
-			float theta_step = glm::pi<float>() / _texture->height();
-			float beg_theta = theta_step * iy;
-			float end_theta = beg_theta + theta_step;
-			float beg_y = cos(beg_theta);
-			float end_y = cos(end_theta);
-			float sr = (beg_y - end_y) * (glm::two_pi<float>() / _texture->width());
-
-			return (1.0f / sr) * _aliasMethod.probability(iy * _texture->width() + ix);
+			return _pdf[iy * _texture->width() + ix];
 		}
 		virtual glm::dvec3 sample(PeseudoRandom *random, const glm::dvec3 &n) const override {
 			const Image2D &image = *_texture;
@@ -222,7 +246,8 @@ namespace rt {
 		}
 	private:
 		std::unique_ptr<Image2D> _texture;
-		AliasMethod _aliasMethod;
+		std::vector<float> _pdf;
+		AliasMethod<double> _aliasMethod;
 	};
 
 	class Scene {
