@@ -39,42 +39,6 @@ namespace rt {
 		}
 	};
 
-	// copy and paste from:
-	//     https://ja.wikipedia.org/wiki/Xorshift
-	struct Xor64 : public PeseudoRandom {
-		Xor64() {
-
-		}
-		Xor64(uint64_t seed) {
-			_x = std::max(seed, 1ULL);
-		}
-		uint64_t next() {
-			_x = _x ^ (_x << 13);
-			_x = _x ^ (_x >> 7);
-			_x = _x ^ (_x << 17);
-			return _x;
-		}
-
-		// copy and paste from:
-		//     http://xoshiro.di.unimi.it/
-		// より直観的な説明
-		//     http://marupeke296.com/TIPS_No16_flaotrandom.html
-		double uniform64f() override {
-			uint64_t x = next();
-			uint64_t bits = (0x3FFULL << 52) | (x >> 12);
-			double value = *reinterpret_cast<double *>(&bits) - 1.0;
-			return value;
-		}
-		float uniform32f() override {
-			uint64_t x = next();
-			uint32_t bits = ((uint32_t)x >> 9) | 0x3f800000;
-			float value = *reinterpret_cast<float *>(&bits) - 1.0f;
-			return value;
-		}
-
-		uint64_t _x = 88172645463325252ULL;
-	};
-
 	// http://xoshiro.di.unimi.it/splitmix64.c
 	// for generate seed
 	struct splitmix {

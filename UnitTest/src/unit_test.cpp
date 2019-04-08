@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #define CATCH_CONFIG_RUNNER
-#include "catch2/catch.hpp"
+#include "catch.hpp"
 #include "ofMain.h"
 
 #include "online.hpp"
@@ -13,6 +13,9 @@
 #include "triangle_util.hpp"
 #include "assertion.hpp"
 #include "value_prportional_sampler.hpp"
+#include "plot.hpp"
+
+using DefaultRandom = rt::Xoshiro128Plus;
 
 void run_unit_test() {
 	static Catch::Session session;
@@ -26,30 +29,45 @@ void run_unit_test() {
 
 TEST_CASE("random", "[random]") {
 	auto run = [](rt::PeseudoRandom *random) {
-		int k = 1000;
-		std::vector<int> Os(k);
-		int N = k * 100;
+		int k = 5;
+		std::vector<int>    hist(k);
+		std::vector<double> prob(k);
+		int N = 300000;
+
+		rt::GNUPlot4 plot;
 		for (int i = 0; i < N; ++i) {
 			int index = (int)random->uniform(0.0, k);
 			REQUIRE(index <= k);
 			index = std::min(index, k - 1);
-			Os[index]++;
-		}
+			hist[index]++;
 
-		double prob_truth = 100.0 / k;
-		for (auto O_i : Os) {
-			double prob = 100.0 * (double)O_i / N;
-			REQUIRE(std::abs(prob - prob_truth) < 0.05);
+			for (int j = 0; j < k; ++j) {
+				int n = i + 1;
+				prob[j] = 100.0 * (double)hist[j] / n;
+			}
+
+			//if (1000 < i && i % 100 == 0) {
+			//	plot.add((double)i, prob[0], prob[1], prob[2], prob[3]);
+			//}
+		}
+		//plot.show("0", "1", "2", "3");
+		//std::cin.get();
+
+		for (int j = 0; j < k; ++j) {
+			REQUIRE(prob[j] == Approx(20.0).margin(0.5));
 		}
 	};
 	SECTION("XoroshiroPlus128") {
-		run(&rt::XoroshiroPlus128());
+		run(&rt::XoroshiroPlus128(8));
 	}
-	SECTION("Xor64") {
-		run(&rt::Xor64());
+	SECTION("Xoshiro128Plus") {
+		run(&rt::Xoshiro128Plus(3));
+	}
+	SECTION("PCG") {
+		run(&rt::PCG32(43, 1));
 	}
 	SECTION("MT") {
-		run(&rt::MT());
+		run(&rt::MT(6));
 	}
 }
 
@@ -117,7 +135,7 @@ TEST_CASE("sample_on_unit_sphere", "[sample_on_unit_sphere]") {
 }
 
 TEST_CASE("OrthonormalBasis", "[OrthonormalBasis]") {
-	rt::Xor64 random;
+	DefaultRandom random;
 	for (int j = 0; j < 100000; ++j) {
 		auto zAxis = rt::sample_on_unit_sphere(&random);
 		rt::OrthonormalBasis space(zAxis);
@@ -142,7 +160,7 @@ TEST_CASE("OrthonormalBasis", "[OrthonormalBasis]") {
 
 TEST_CASE("PlaneEquation", "[PlaneEquation]") {
 	SECTION("basic") {
-		rt::Xor64 random;
+		DefaultRandom random;
 		for (int i = 0; i < 100; ++i) {
 			auto n = rt::sample_on_unit_sphere(&random);
 			glm::dvec3 point_on_plane = { random.uniform(), random.uniform(), random.uniform() };
@@ -166,7 +184,7 @@ TEST_CASE("PlaneEquation", "[PlaneEquation]") {
 
 TEST_CASE("triangle_util", "[triangle_util]") {
 	SECTION("triangle_normal_cw") {
-		rt::Xor64 random;
+		DefaultRandom random;
 
 		// xz-plane
 		for (int i = 0; i < 1000; ++i) {
@@ -222,7 +240,7 @@ TEST_CASE("triangle_util", "[triangle_util]") {
 }
 
 TEST_CASE("triangle sampler", "[triangle sampler]") {
-	rt::Xor64 random;
+	DefaultRandom random;
 	for (int j = 0; j < 10; ++j) {
 		glm::dvec3 center_expect;
 
