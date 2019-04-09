@@ -13,18 +13,19 @@
 #include "triangle_util.hpp"
 #include "assertion.hpp"
 #include "value_prportional_sampler.hpp"
+#include "alias_method.hpp"
 #include "plot.hpp"
 
 using DefaultRandom = rt::Xoshiro128Plus;
 
 void run_unit_test() {
 	static Catch::Session session;
-	//char* custom_argv[] = {
-	//	"",
-	//	"[random]"
-	//};
-	// session.run(sizeof(custom_argv) / sizeof(custom_argv[0]), custom_argv);
-	session.run();
+	char* custom_argv[] = {
+		"",
+		"[random]"
+	};
+	 session.run(sizeof(custom_argv) / sizeof(custom_argv[0]), custom_argv);
+	// session.run();
 }
 
 TEST_CASE("random", "[random]") {
@@ -34,7 +35,7 @@ TEST_CASE("random", "[random]") {
 		std::vector<double> prob(k);
 		int N = 300000;
 
-		rt::GNUPlot4 plot;
+		// rt::GNUPlot4 plot;
 		for (int i = 0; i < N; ++i) {
 			int index = (int)random->uniform(0.0, k);
 			REQUIRE(index <= k);
@@ -50,6 +51,7 @@ TEST_CASE("random", "[random]") {
 			//	plot.add((double)i, prob[0], prob[1], prob[2], prob[3]);
 			//}
 		}
+		//plot.ytics(0.5);
 		//plot.show("0", "1", "2", "3");
 		//std::cin.get();
 
@@ -292,7 +294,7 @@ TEST_CASE("triangle sampler", "[triangle sampler]") {
 }
 
 TEST_CASE("ValueProportionalSampler", "[ValueProportionalSampler]") {
-	rt::XoroshiroPlus128 random;
+	DefaultRandom random;
 
 	for (int j = 0; j < 10; ++j)
 	{
@@ -309,6 +311,50 @@ TEST_CASE("ValueProportionalSampler", "[ValueProportionalSampler]") {
 		for (int i = 0; i < h.size(); ++i) {
 			double prob = (double)h[i] / N;
 			REQUIRE(prob == Approx(sampler.probability(i)).margin(1.0e-2));
+		}
+	}
+}
+
+TEST_CASE("AliasMethod", "[AliasMethod]") {
+	DefaultRandom random;
+
+	for (int j = 0; j < 10; ++j)
+	{
+		int buckets = 5;
+		std::vector<float> ws;
+		for (int i = 0; i < buckets; ++i) {
+			ws.push_back(glm::mix(0.1, 1.0, random.uniform()));
+		}
+		rt::AliasMethod<float> alias;
+		alias.prepare(ws);
+
+		// rt::GNUPlot4 plot;
+
+		std::vector<int>    hist(buckets);
+		std::vector<double> prob(buckets);
+		int N = 10000000;
+		for (int i = 0; i < N; ++i) {
+			hist[alias.sample(random.uniform(), random.uniform())]++;
+
+			for (int j = 0; j < buckets; ++j) {
+				int n = i + 1;
+				prob[j] = 100.0 * (double)hist[j] / n;
+			}
+
+			//if (2000 < i && i % 100 == 0) {
+			//	plot.add((double)i,
+			//		std::fabs(prob[0] - alias.probability(0) * 100.0f),
+			//		std::fabs(prob[1] - alias.probability(1) * 100.0f),
+			//		std::fabs(prob[2] - alias.probability(2) * 100.0f),
+			//		std::fabs(prob[3] - alias.probability(3) * 100.0f));
+			//}
+		}
+		//plot.ytics(0.1);
+		//plot.show("0", "1", "2", "3");
+		//std::cin.get();
+
+		for (int i = 0; i < buckets; ++i) {
+			REQUIRE(prob[i] == Approx(alias.probability(i) * 100.0f).margin(0.1f));
 		}
 	}
 }
