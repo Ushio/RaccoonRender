@@ -7,7 +7,7 @@ namespace rt {
 	template <class Real>
 	class SphericalTriangleSampler {
 	public:
-		using Vec3 = glm::tvec3<Real, glm::precision::highp>;
+		using Vec3 = glm::tvec3<Real>;
 
 		/*
 		 a, b, c はポリゴンの頂点
