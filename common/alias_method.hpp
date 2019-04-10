@@ -91,7 +91,7 @@ namespace rt {
 				int upper_index = upper.top();
 				upper.pop();
 
-				assert(Real(1.0) <= buckets[upper_index].height);
+				RT_ASSERT(Real(1.0) <= buckets[upper_index].height);
 
 				Real mov = Real(1.0) - buckets[lower_index].height;
 				buckets[upper_index].height -= mov;
@@ -113,9 +113,6 @@ namespace rt {
 			return probs[i];
 		}
 		int sample(Real u0, Real u1) const {
-			RT_ASSERT(Real(0.0) <= u0 && u0 < Real(1.0));
-			RT_ASSERT(Real(0.0) <= u1 && u1 < Real(1.0));
-
 			Real indexf = u0 * buckets.size();
 			int index = int(indexf);
 			index = std::max(index, 0);

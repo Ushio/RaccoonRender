@@ -8,11 +8,11 @@
 #include "envmap.hpp"
 
 namespace rt {
-	inline std::vector<std::unique_ptr<BxDF>> instanciateMaterials(houdini_alembic::PolygonMeshObject *p, const glm::dmat3 &xformInverseTransposed) {
+	inline std::vector<std::unique_ptr<BxDF>> instanciateMaterials(houdini_alembic::PolygonMeshObject *p, const glm::mat3 &xformInverseTransposed) {
 		std::vector<std::unique_ptr<BxDF>> materials;
 
 		auto default_material = []() {
-			return std::unique_ptr<BxDF>(new LambertianBRDF(glm::dvec3(), glm::dvec3(0.9, 0.1, 0.9), false));
+			return std::unique_ptr<BxDF>(new LambertianBRDF(glm::vec3(), glm::vec3(0.9f, 0.1f, 0.9f), false));
 		};
 
 		auto material_string = p->primitives.column_as_string("material");
@@ -45,9 +45,9 @@ namespace rt {
 				switch (scope)
 				{
 				case rt::GeoScope::Vertices:
-					if (value.is_type<std::array<glm::dvec3, 3>>()) {
+					if (value.is_type<std::array<glm::vec3, 3>>()) {
 						if (auto v = p->vertices.column_as_vector3(prop.get_name().data())) {
-							std::array<glm::dvec3, 3> value;
+							std::array<glm::vec3, 3> value;
 							for (int j = 0; j < value.size(); ++j) {
 								v->get(i * 3 + j, glm::value_ptr(value[j]));
 							}
@@ -57,9 +57,9 @@ namespace rt {
 
 					break;
 				case rt::GeoScope::Primitives:
-					if (value.is_type<glm::dvec3>()) {
+					if (value.is_type<glm::vec3>()) {
 						if (auto v = p->primitives.column_as_vector3(prop.get_name().data())) {
-							glm::dvec3 value;
+							glm::vec3 value;
 							v->get(i, glm::value_ptr(value));
 							prop.set_value(instance, value);
 						}
@@ -91,12 +91,12 @@ namespace rt {
 	}
 
 	struct Luminaire {
-		glm::dvec3 points[3];
-		glm::dvec3 Ng;
+		glm::vec3 points[3];
+		glm::vec3 Ng;
 		bool backenable = false;
-		PlaneEquation<double> plane;
-		double area = 0.0;
-		glm::dvec3 center;
+		PlaneEquation<float> plane;
+		float area = 0.0f;
+		glm::vec3 center;
 	};
 
 	class Scene {
@@ -138,7 +138,7 @@ namespace rt {
 		Scene(const Scene &) = delete;
 		void operator=(const Scene &) = delete;
 
-		bool intersect(const glm::dvec3 &ro, const glm::dvec3 &rd, ShadingPoint *shadingPoint, float *tmin) const {
+		bool intersect(const glm::vec3 &ro, const glm::vec3 &rd, ShadingPoint *shadingPoint, float *tmin) const {
 			RTCRayHit rayhit;
 			rayhit.ray.org_x = ro.x;
 			rayhit.ray.org_y = ro.y;
@@ -183,12 +183,12 @@ namespace rt {
 			t_uv = (1-u-v)*t0 + u*t1 + v*t2
 			= t0 + u*(t1-t0) + v*(t2-t0)
 			*/
-			//double u = rayhit.hit.u;
-			//double v = rayhit.hit.v;
+			//float u = rayhit.hit.u;
+			//float v = rayhit.hit.v;
 			//auto v0 = geom.points[prim.indices[0]].P;
 			//auto v1 = geom.points[prim.indices[1]].P;
 			//auto v2 = geom.points[prim.indices[2]].P;
-			//(*material)->p = (1.0 - u - v) * v0 + u * v1 + v * v2;
+			//(*material)->p = (1.0f - u - v) * v0 + u * v1 + v * v2;
 
 			return true;
 		}
@@ -252,11 +252,11 @@ namespace rt {
 			for (int i = 0; i < 16; ++i) {
 				glm::value_ptr(xform)[i] = p->combinedXforms.value_ptr()[i];
 			}
-			glm::dmat3 xformInverseTransposed = glm::inverseTranspose(xform);
+			glm::mat3 xformInverseTransposed = glm::inverseTranspose(xform);
 
 			polymesh->points.reserve(p->P.size());
 			for (auto srcP : p->P) {
-				glm::vec3 p = xform * glm::dvec4(srcP.x, srcP.y, srcP.z, 1.0);
+				glm::vec3 p = xform * glm::vec4(srcP.x, srcP.y, srcP.z, 1.0f);
 				polymesh->points.emplace_back(p);
 			}
 
@@ -286,9 +286,9 @@ namespace rt {
 						L.Ng = triangle_normal_cw(L.points[0], L.points[1], L.points[2]);
 
 						L.plane.from_point_and_normal(L.points[0], L.Ng); 
-						L.center = (L.points[0] + L.points[1] + L.points[2]) / 3.0;
+						L.center = (L.points[0] + L.points[1] + L.points[2]) / 3.0f;
 						L.area = triangle_area(L.points[0], L.points[1], L.points[2]);
-						RT_ASSERT(0.0 < L.area);
+						RT_ASSERT(0.0f < L.area);
 
 						_luminaires.emplace_back(L);
 

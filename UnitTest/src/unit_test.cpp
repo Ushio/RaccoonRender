@@ -20,12 +20,12 @@ using DefaultRandom = rt::Xoshiro128Plus;
 
 void run_unit_test() {
 	static Catch::Session session;
-	char* custom_argv[] = {
-		"",
-		"[sample_on_unit_sphere]"
-	};
-	 session.run(sizeof(custom_argv) / sizeof(custom_argv[0]), custom_argv);
-	// session.run();
+	//char* custom_argv[] = {
+	//	"",
+	//	"[sample_on_unit_sphere]"
+	//};
+	// session.run(sizeof(custom_argv) / sizeof(custom_argv[0]), custom_argv);
+	session.run();
 }
 
 TEST_CASE("random", "[random]") {
@@ -161,7 +161,7 @@ TEST_CASE("OrthonormalBasis", "[OrthonormalBasis]") {
 	DefaultRandom random;
 	for (int j = 0; j < 100000; ++j) {
 		auto zAxis = rt::sample_on_unit_sphere<double>(random.uniform(), random.uniform());
-		rt::OrthonormalBasis space(zAxis);
+		rt::OrthonormalBasis<double> space(zAxis);
 
 		REQUIRE(glm::dot(space.xaxis, space.yaxis) == Approx(0.0).margin(1.0e-15));
 		REQUIRE(glm::dot(space.yaxis, space.zaxis) == Approx(0.0).margin(1.0e-15));
@@ -192,7 +192,7 @@ TEST_CASE("PlaneEquation", "[PlaneEquation]") {
 			p.from_point_and_normal(point_on_plane, n);
 			REQUIRE(p.signed_distance(point_on_plane) == Approx(0.0).margin(1.0e-9));
 
-			rt::OrthonormalBasis space(n);
+			rt::OrthonormalBasis<double> space(n);
 			REQUIRE(p.signed_distance(point_on_plane + space.xaxis) == Approx(0.0).margin(1.0e-9));
 			REQUIRE(p.signed_distance(point_on_plane + space.yaxis) == Approx(0.0).margin(1.0e-9));
 

@@ -7,23 +7,23 @@ namespace rt {
 	class EnvironmentMap {
 	public:
 		virtual ~EnvironmentMap() {}
-		virtual glm::dvec3 radiance(const glm::dvec3 &wi) const = 0;
-		virtual float pdf(const glm::dvec3 &rd, const glm::dvec3 &n) const = 0;
-		virtual glm::dvec3 sample(PeseudoRandom *random, const glm::dvec3 &n) const = 0;
+		virtual glm::vec3 radiance(const glm::vec3 &wi) const = 0;
+		virtual float pdf(const glm::vec3 &rd, const glm::vec3 &n) const = 0;
+		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n) const = 0;
 	};
 
 	class ConstantEnvmap : public EnvironmentMap {
 	public:
-		virtual glm::dvec3 radiance(const glm::dvec3 &wi) const {
+		virtual glm::vec3 radiance(const glm::vec3 &wi) const {
 			return constant;
 		}
-		virtual float pdf(const glm::dvec3 &rd, const glm::dvec3 &n) const override {
+		virtual float pdf(const glm::vec3 &rd, const glm::vec3 &n) const override {
 			return CosThetaProportionalSampler::pdf(rd, n);
 		}
-		virtual glm::dvec3 sample(PeseudoRandom *random, const glm::dvec3 &n) const override {
+		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n) const override {
 			return CosThetaProportionalSampler::sample(random, n);
 		}
-		glm::dvec3 constant;
+		glm::vec3 constant;
 	};
 
 	class ImageEnvmap : public EnvironmentMap {
@@ -51,9 +51,8 @@ namespace rt {
 				double sr = solid_angle_sliced_sphere(beg_theta, end_theta) / _texture->width();
 
 				for (int x = 0; x < image.width(); ++x) {
-					auto radiance = image(x, y);
-					double Y = 0.2126 * radiance.x + 0.7152 * radiance.y + 0.0722 * radiance.z;
-
+					glm::vec4 radiance = image(x, y);
+					float Y = 0.2126f * radiance.x + 0.7152f * radiance.y + 0.0722f * radiance.z;
 					weights[y * image.width() + x] = Y * sr;
 				}
 			}
@@ -92,11 +91,11 @@ namespace rt {
 			return true;
 		}
 
-		virtual glm::dvec3 radiance(const glm::dvec3 &rd) const override {
+		virtual glm::vec3 radiance(const glm::vec3 &rd) const override {
 			float theta;
 			float phi;
 			if (spherical_coordinate_positive(rd, &theta, &phi) == false) {
-				return glm::dvec3(0.0);
+				return glm::vec3(0.0);
 			}
 
 			RT_ASSERT(0.0 <= phi && phi <= glm::two_pi<float>());
@@ -108,7 +107,7 @@ namespace rt {
 			// 1.0f - is texture coordinate problem
 			return _texture->sample_repeat(u, 1.0f - v);
 		}
-		float pdf(const glm::dvec3 &rd, const glm::dvec3 &n) const {
+		float pdf(const glm::vec3 &rd, const glm::vec3 &n) const {
 			float theta;
 			float phi;
 			if (spherical_coordinate_positive(rd, &theta, &phi) == false) {
@@ -126,7 +125,7 @@ namespace rt {
 
 			return _pdf[iy * _texture->width() + ix];
 		}
-		virtual glm::dvec3 sample(PeseudoRandom *random, const glm::dvec3 &n) const override {
+		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n) const override {
 			const Image2D &image = *_texture;
 
 			int index = _aliasMethod.sample(random->uniform32f(), random->uniform32f());
@@ -147,7 +146,7 @@ namespace rt {
 
 			float x = r_xz * sin(phi);
 			float z = r_xz * cos(phi);
-			return glm::dvec3(x, y, z);
+			return glm::vec3(x, y, z);
 		}
 	private:
 		std::unique_ptr<Image2D> _texture;
