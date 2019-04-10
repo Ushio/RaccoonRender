@@ -204,7 +204,7 @@ namespace rt {
 				double sP = _selector.probability(i);
 				double tmin;
 				if (0.0 < sP && intersect_ray_triangle(_o, wi, luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], &tmin)) {
-					SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+					SphericalTriangleSampler<double> sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
 					p += sP * (1.0 / sSampler.solidAngle());
 
 					//double pA = 1.0 / luminaires[i].area;
@@ -228,7 +228,7 @@ namespace rt {
 			const std::vector<Luminaire> &luminaires = *_luminaires;
 			int i = _selector.sample(random);
 
-			SphericalTriangleSampler sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
+			SphericalTriangleSampler<double> sSampler(luminaires[i].points[0], luminaires[i].points[1], luminaires[i].points[2], _o);
 			double a = random->uniform();
 			double b = random->uniform();
 			auto wi = sSampler.sample_direction(a, b);
