@@ -54,16 +54,19 @@ namespace rt {
 	class CosThetaProportionalSampler {
 	public:
 		static glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &Ng) {
-			float x;
-			float y;
-			float r_sqared;
-			do {
-				x = random->uniform(-1.0f, 1.0f);
-				y = random->uniform(-1.0f, 1.0f);
-				r_sqared = x * x + y * y;
-			} while (r_sqared >= 1.0f);
-			float z = std::sqrt(std::max(1.0f - r_sqared, 0.0f));
+			float a = random->uniform();
+			float b = random->uniform();
+			float r = std::sqrt(a);
+			float theta = b * glm::pi<float>() * 2.0f;
 
+			// uniform in xy circle, a = r * r
+			float x = r * cos(theta);
+			float y = r * sin(theta);
+			
+			// unproject to hemisphere
+			float z = std::sqrt(std::max(1.0f - a, 0.0f));
+			
+			// local to global
 			OrthonormalBasis<float> basis(Ng);
 			return basis.localToGlobal(glm::vec3(x, y, z));
 		}
