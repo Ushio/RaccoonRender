@@ -43,6 +43,8 @@ namespace rt {
 	class AliasMethod {
 	public:
 		void prepare(const std::vector<Real> &weights) {
+			RT_ASSERT(weights.empty() == false);
+
 			probs.clear();
 			buckets.clear();
 
@@ -52,7 +54,7 @@ namespace rt {
 			}
 			Real one_over_weight_sum = Real(1.0) / w_sum.get();
 
-			int N = weights.size();
+			int N = (int)weights.size();
 			probs.resize(N);
 			buckets.resize(N);
 			for (int i = 0; i < N; ++i) {
@@ -107,13 +109,18 @@ namespace rt {
 		}
 
 		Real probability(int i) const {
+			RT_ASSERT(0 <= i && i < probs.size());
 			return probs[i];
 		}
 		int sample(Real u0, Real u1) const {
+			RT_ASSERT(Real(0.0) <= u0 && u0 < Real(1.0));
+			RT_ASSERT(Real(0.0) <= u1 && u1 < Real(1.0));
+
 			Real indexf = u0 * buckets.size();
-			int index = (int)(indexf);
+			int index = int(indexf);
 			index = std::max(index, 0);
 			index = std::min(index, (int)buckets.size() - 1);
+
 			if (buckets[index].alias < 0) {
 				return index;
 			}
