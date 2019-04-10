@@ -31,8 +31,8 @@ void run_unit_test() {
 TEST_CASE("random", "[random]") {
 	auto run = [](rt::PeseudoRandom *random) {
 		int k = 5;
-		std::vector<int>    hist(k);
-		std::vector<double> prob(k);
+		std::vector<int>   hist(k);
+		std::vector<float> prob(k);
 		int N = 300000;
 
 		// rt::GNUPlot4 plot;
@@ -44,7 +44,7 @@ TEST_CASE("random", "[random]") {
 
 			for (int j = 0; j < k; ++j) {
 				int n = i + 1;
-				prob[j] = 100.0 * (double)hist[j] / n;
+				prob[j] = 100.0f * (float)hist[j] / n;
 			}
 
 			//if (1000 < i && i % 100 == 0) {
@@ -56,12 +56,9 @@ TEST_CASE("random", "[random]") {
 		//std::cin.get();
 
 		for (int j = 0; j < k; ++j) {
-			REQUIRE(prob[j] == Approx(20.0).margin(0.5));
+			REQUIRE(prob[j] == Approx(20.0f).margin(0.5f));
 		}
 	};
-	SECTION("XoroshiroPlus128") {
-		run(&rt::XoroshiroPlus128(8));
-	}
 	SECTION("Xoshiro128Plus") {
 		run(&rt::Xoshiro128Plus(3));
 	}
@@ -76,19 +73,19 @@ TEST_CASE("random", "[random]") {
 TEST_CASE("online", "[online]") {
 	DefaultRandom random;
 	for (int i = 0; i < 100; ++i) {
-		std::vector<double> xs;
-		rt::OnlineVariance<double> ov;
+		std::vector<float> xs;
+		rt::OnlineVariance<float> ov;
 		for (int j = 0; j < 100; ++j) {
-			double x = random.uniform(0.0, 10.0);
+			float x = random.uniform(0.0f, 10.0f);
 			xs.push_back(x);
 			ov.addSample(x);
 
-			double mean;
-			double variance;
+			float mean;
+			float variance;
 			rt::mean_and_variance(xs, &mean, &variance);
 
-			REQUIRE(std::abs(mean - ov.mean()) < 1.0e-9);
-			REQUIRE(std::abs(variance - ov.variance()) < 1.0e-9);
+			REQUIRE(std::abs(mean - ov.mean()) < 1.0e-5f);
+			REQUIRE(std::abs(variance - ov.variance()) < 1.0e-5f);
 		}
 	}
 }
@@ -197,7 +194,7 @@ TEST_CASE("PlaneEquation", "[PlaneEquation]") {
 			REQUIRE(p.signed_distance(point_on_plane + space.yaxis) == Approx(0.0).margin(1.0e-9));
 
 			for (int j = 0; j < 10; ++j) {
-				double d = random.uniform(-5, 5);
+				double d = random.uniform(-5.0f, 5.0f);
 				REQUIRE(p.signed_distance(point_on_plane + space.zaxis * d) == Approx(d).margin(1.0e-9));
 			}
 		}
@@ -265,22 +262,22 @@ TEST_CASE("triangle_util", "[triangle_util]") {
 TEST_CASE("triangle sampler", "[triangle sampler]") {
 	DefaultRandom random;
 	for (int j = 0; j < 10; ++j) {
-		glm::dvec3 center_expect;
+		glm::vec3 center_expect;
 
-		glm::dvec3 p0 = { random.uniform(), random.uniform(), random.uniform() };
-		glm::dvec3 p1 = { random.uniform(), random.uniform(), random.uniform() };
-		glm::dvec3 p2 = { random.uniform(), random.uniform(), random.uniform() };
-		glm::dvec3 c = (p0 + p1 + p2) / 3.0;
+		glm::vec3 p0 = { random.uniform(), random.uniform(), random.uniform() };
+		glm::vec3 p1 = { random.uniform(), random.uniform(), random.uniform() };
+		glm::vec3 p2 = { random.uniform(), random.uniform(), random.uniform() };
+		glm::vec3 c = (p0 + p1 + p2) / 3.0f;
 
 		int N = 100000;
 		for (int j = 0; j < N; ++j) {
 			auto sample = rt::uniform_on_triangle(random.uniform(), random.uniform());
-			glm::dvec3 n = rt::triangle_normal_cw(p0, p1, p2);
-			rt::PlaneEquation<double> plane;
+			glm::vec3 n = rt::triangle_normal_cw(p0, p1, p2);
+			rt::PlaneEquation<float> plane;
 			plane.from_point_and_normal(p0, n);
 
 			glm::dvec3 s = sample.evaluate(p0, p1, p2);
-			REQUIRE(plane.signed_distance(p0) == Approx(0.0).margin(1.0e-8));
+			REQUIRE(plane.signed_distance(p0) == Approx(0.0f).margin(1.0e-6f));
 
 			/*
 			{sx}   { p_0x, p_1x, p_2x }   {a}
@@ -295,15 +292,15 @@ TEST_CASE("triangle sampler", "[triangle sampler]") {
 
 			であるはずだ
 			*/
-			glm::dmat3 m = {
+			glm::mat3 m = {
 				p0.x, p0.y, p0.z,
 				p1.x, p1.y, p1.z,
 				p2.x, p2.y, p2.z,
 			};
-			glm::dvec3 abc = glm::inverse(m) * s;
-			REQUIRE(abc.x > 0.0);
-			REQUIRE(abc.y > 0.0);
-			REQUIRE(abc.z > 0.0);
+			glm::vec3 abc = glm::inverse(m) * s;
+			REQUIRE(abc.x >= 0.0f);
+			REQUIRE(abc.y >= 0.0f);
+			REQUIRE(abc.z >= 0.0f);
 
 			center_expect += s;
 		}
@@ -352,14 +349,14 @@ TEST_CASE("AliasMethod", "[AliasMethod]") {
 		// rt::GNUPlot4 plot;
 
 		std::vector<int>    hist(buckets);
-		std::vector<double> prob(buckets);
+		std::vector<float> prob(buckets);
 		int N = 10000000;
 		for (int i = 0; i < N; ++i) {
-			hist[alias.sample(random.uniform(), random.uniform())]++;
+			hist[alias.sample(random.uniform_integer(), random.uniform())]++;
 
 			for (int j = 0; j < buckets; ++j) {
 				int n = i + 1;
-				prob[j] = 100.0 * (double)hist[j] / n;
+				prob[j] = 100.0f * (float)hist[j] / n;
 			}
 
 			//if (2000 < i && i % 100 == 0) {

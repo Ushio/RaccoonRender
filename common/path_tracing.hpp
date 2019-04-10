@@ -16,10 +16,13 @@ namespace rt {
 	class Image {
 	public:
 		Image(int w, int h) :_w(w), _h(h), _pixels(h * w), _randoms(h * w) {
-			XoroshiroPlus128 random;
+			//Xoshiro128Plus random;
+			//for (int i = 0; i < _randoms.size(); ++i) {
+			//	_randoms[i] = random;
+			//	random.jump();
+			//}
 			for (int i = 0; i < _randoms.size(); ++i) {
-				_randoms[i] = random;
-				random.jump();
+				_randoms[i] = PCG32(7, i);
 			}
 		}
 		int width() const {
@@ -58,7 +61,8 @@ namespace rt {
 		int _w = 0;
 		int _h = 0;
 		std::vector<Pixel> _pixels;
-		std::vector<XoroshiroPlus128> _randoms;
+		// std::vector<Xoshiro128Plus> _randoms;
+		std::vector<PCG32> _randoms;
 	};
 
 	class SolidAngleSampler {

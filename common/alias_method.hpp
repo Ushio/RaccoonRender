@@ -112,11 +112,8 @@ namespace rt {
 			RT_ASSERT(0 <= i && i < probs.size());
 			return probs[i];
 		}
-		int sample(Real u0, Real u1) const {
-			Real indexf = u0 * buckets.size();
-			int index = int(indexf);
-			index = std::max(index, 0);
-			index = std::min(index, (int)buckets.size() - 1);
+		int sample(uint64_t large_u0, Real u1) const {
+			int index = int(large_u0 % buckets.size());
 
 			if (buckets[index].alias < 0) {
 				return index;

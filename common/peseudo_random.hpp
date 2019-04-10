@@ -9,34 +9,22 @@ namespace rt {
 	struct PeseudoRandom {
 		virtual ~PeseudoRandom() {}
 
-		/* double */
-
 		// 0.0 <= x < 1.0
-		virtual double uniform64f() = 0;
-
-		// 0.0 <= x < 1.0
-		double uniform() {
-			return uniform64f();
+		float uniform() {
+			return uniform_float();
 		}
+
 		// a <= x < b
-		double uniform(double a, double b) {
-			return glm::mix(a, b, uniform64f());
+		float uniform(float a, float b) {
+			return glm::mix(a, b, uniform_float());
 		}
 
 		/* float */
 		// 0.0 <= x < 1.0
-		virtual float uniform32f() {
-			return uniform64f();
-		}
+		virtual float uniform_float() = 0;
 
-		// 0.0 <= x < 1.0
-		float uniformf() {
-			return uniform32f();
-		}
-		// a <= x < b
-		float uniformf(float a, float b) {
-			return glm::mix(a, b, uniform32f());
-		}
+		/* A large integer enough to ignore modulo bias */
+		virtual uint64_t uniform_integer() = 0;
 	};
 
 	// http://xoshiro.di.unimi.it/splitmix64.c
@@ -49,75 +37,6 @@ namespace rt {
 			z = (z ^ (z >> 27)) * 0x94d049bb133111eb;
 			return z ^ (z >> 31);
 		}
-	};
-
-	/*
-	http://xoshiro.di.unimi.it/xoroshiro128plus.c
-	*/
-	struct XoroshiroPlus128 : public PeseudoRandom {
-		XoroshiroPlus128() {
-			splitmix sp;
-			sp.x = 38927482;
-			s[0] = std::max(sp.next(), 1ULL);
-			s[1] = std::max(sp.next(), 1ULL);
-		}
-		XoroshiroPlus128(uint64_t seed) {
-			splitmix sp;
-			sp.x = seed;
-			s[0] = std::max(sp.next(), 1ULL);
-			s[1] = std::max(sp.next(), 1ULL);
-		}
-
-		double uniform64f() override {
-			uint64_t x = next();
-			uint64_t bits = (0x3FFULL << 52) | (x >> 12);
-			return *reinterpret_cast<double *>(&bits) - 1.0;
-		}
-		float uniform32f() override {
-			uint64_t x = next();
-			uint32_t bits = ((uint32_t)x >> 9) | 0x3f800000;
-			float value = *reinterpret_cast<float *>(&bits) - 1.0f;
-			return value;
-		}
-		/* This is the jump function for the generator. It is equivalent
-		to 2^64 calls to next(); it can be used to generate 2^64
-		non-overlapping subsequences for parallel computations. */
-		void jump() {
-			static const uint64_t JUMP[] = { 0xdf900294d8f554a5, 0x170865df4b3201fc };
-
-			uint64_t s0 = 0;
-			uint64_t s1 = 0;
-			for (int i = 0; i < sizeof JUMP / sizeof *JUMP; i++)
-			{
-				for (int b = 0; b < 64; b++) {
-					if (JUMP[i] & UINT64_C(1) << b) {
-						s0 ^= s[0];
-						s1 ^= s[1];
-					}
-					next();
-				}
-			}
-
-			s[0] = s0;
-			s[1] = s1;
-		}
-	private:
-		uint64_t rotl(const uint64_t x, int k) const {
-			return (x << k) | (x >> (64 - k));
-		}
-		uint64_t next() {
-			const uint64_t s0 = s[0];
-			uint64_t s1 = s[1];
-			const uint64_t result = s0 + s1;
-
-			s1 ^= s0;
-			s[0] = rotl(s0, 24) ^ s1 ^ (s1 << 16); // a, b
-			s[1] = rotl(s1, 37); // c
-
-			return result;
-		}
-	private:
-		uint64_t s[2];
 	};
 
 	/*
@@ -139,20 +58,19 @@ namespace rt {
 			}
 		}
 
-		double uniform64f() override {
-			uint64_t a = next() >> 6; // get 26 bit
-			uint64_t b = next() >> 6; // get 26 bit
-			uint64_t x = a | (b << 26); // 52bit
-			uint64_t bits = 0x3FF0000000000000ull | x;
-			return *reinterpret_cast<double *>(&bits) - 1.0;
-		}
-		float uniform32f() override {
+		float uniform_float() override {
 			uint32_t x = next();
 			uint32_t bits = (x >> 9) | 0x3f800000;
 			float value = *reinterpret_cast<float *>(&bits) - 1.0f;
 			return value;
 		}
-
+		uint64_t uniform_integer() override {
+			// (0xFFFFFFFF >> 11) <<43 | (0xFFFFFFFF >> 11) << 22  | (0xFFFFFFFF >> 10) 
+			uint64_t a = next() >> 11;
+			uint64_t b = next() >> 11;
+			uint64_t c = next() >> 10;
+			return (a << 43) | (b << 22) | c;
+		}
 		/* 
 		This is the jump function for the generator. It is equivalent
 		to 2^64 calls to next(); it can be used to generate 2^64
@@ -229,18 +147,14 @@ namespace rt {
 			next();
 		}
 
-		double uniform64f() override {
-			uint64_t a = next() >> 6; // get 26 bit
-			uint64_t b = next() >> 6; // get 26 bit
-			uint64_t x = a | (b << 26); // 52bit
-			uint64_t bits = 0x3FF0000000000000ull | x;
-			return *reinterpret_cast<double *>(&bits) - 1.0;
-		}
-		float uniform32f() override {
+		float uniform_float() override {
 			uint32_t x = next();
 			uint32_t bits = (x >> 9) | 0x3f800000;
 			float value = *reinterpret_cast<float *>(&bits) - 1.0f;
 			return value;
+		}
+		uint64_t uniform_integer() override {
+			return (uint64_t(next()) << 32) | uint64_t(next());
 		}
 	private:
 		uint64_t next() {
@@ -264,8 +178,12 @@ namespace rt {
 		MT(uint64_t seed) :_engine(seed) {
 
 		}
-		double uniform64f() override {
-			std::uniform_real_distribution<> d(0.0, 1.0);
+		float uniform_float() override {
+			std::uniform_real_distribution<float> d(0.0f, 1.0f);
+			return d(_engine);
+		}
+		uint64_t uniform_integer() override {
+			std::uniform_int_distribution<uint64_t> d(0, std::numeric_limits<uint64_t>::max());
 			return d(_engine);
 		}
 		std::mt19937 _engine;

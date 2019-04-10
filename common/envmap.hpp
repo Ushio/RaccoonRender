@@ -128,10 +128,10 @@ namespace rt {
 		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n) const override {
 			const Image2D &image = *_texture;
 
-			int index = _aliasMethod.sample(random->uniform32f(), random->uniform32f());
+			int index = _aliasMethod.sample(random->uniform_integer(), random->uniform());
 			int ix = index % image.width();
 			int iy = index / image.width();
-			float sample_x = ix + random->uniform32f();
+			float sample_x = ix + random->uniform();
 
 			float theta_step = glm::pi<float>() / image.height();
 			float beg_theta = theta_step * iy;
@@ -141,7 +141,7 @@ namespace rt {
 
 			float phi = -glm::two_pi<float>() * (sample_x / image.width());
 
-			float y = glm::mix(beg_y, end_y, random->uniform32f());
+			float y = glm::mix(beg_y, end_y, random->uniform());
 			float r_xz = std::sqrt(std::max(1.0f - y * y, 0.0f));
 
 			float x = r_xz * sin(phi);
