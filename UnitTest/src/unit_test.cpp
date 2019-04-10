@@ -22,7 +22,7 @@ void run_unit_test() {
 	static Catch::Session session;
 	char* custom_argv[] = {
 		"",
-		"[random]"
+		"[sample_on_unit_sphere]"
 	};
 	 session.run(sizeof(custom_argv) / sizeof(custom_argv[0]), custom_argv);
 	// session.run();
@@ -74,7 +74,7 @@ TEST_CASE("random", "[random]") {
 }
 
 TEST_CASE("online", "[online]") {
-	rt::XoroshiroPlus128 random;
+	DefaultRandom random;
 	for (int i = 0; i < 100; ++i) {
 		std::vector<double> xs;
 		rt::OnlineVariance<double> ov;
@@ -94,44 +94,65 @@ TEST_CASE("online", "[online]") {
 }
 
 TEST_CASE("sample_on_unit_sphere", "[sample_on_unit_sphere]") {
-	rt::XoroshiroPlus128 random;
+	DefaultRandom random;
 
 	SECTION("sample_on_unit_sphere") {
 		for (int j = 0; j < 10; ++j)
 		{
-			glm::dvec3 c;
-			int N = 100000;
+			rt::GNUPlot3 plot;
+
+			rt::Kahan<float> cs[3];
+			float means[3];
+			int N = 1000000;
+
 			for (int i = 0; i < N; ++i) {
-				auto sample = rt::sample_on_unit_sphere(&random);
-				REQUIRE(glm::length2(sample) == Approx(1.0).margin(1.0e-8));
-				c += sample;
+				glm::vec3 sample = rt::sample_on_unit_sphere<float>(random.uniform(), random.uniform());
+				REQUIRE(glm::length2(sample) == Approx(1.0f).margin(1.0e-5f));
+
+				for(int j = 0; j < 3; ++j) {
+					cs[j] += sample[j];
+					means[j] = cs[j] / float(i + 1);
+				}
+
+				//if (4000 < i && i % 100 == 0) {
+				//	plot.add((double)i, means[0], means[1], means[2]);
+				//}
 			}
-			c /= N;
-			REQUIRE(std::abs(c.x) < 0.01);
-			REQUIRE(std::abs(c.y) < 0.01);
-			REQUIRE(std::abs(c.z) < 0.01);
+
+			//plot.ytics(0.001);
+			//plot.show("x", "y", "z");
+			//std::cin.get();
+
+			for (int j = 0; j < 3; ++j) {
+				REQUIRE(std::abs(means[j]) < 0.002f);
+			}
 		}
 	}
 
 	SECTION("sample_on_unit_hemisphere") {
 		for (int j = 0; j < 10; ++j)
 		{
-			glm::dvec3 c;
-			int N = 100000;
-			for (int i = 0; i < N; ++i) {
-				auto sample = rt::sample_on_unit_hemisphere(&random);
-				REQUIRE(glm::length2(sample) == Approx(1.0).margin(1.0e-8));
+			rt::Kahan<float> cs[3];
+			float means[3];
+			int N = 1000000;
 
+			for (int i = 0; i < N; ++i) {
+				glm::vec3 sample = rt::sample_on_unit_hemisphere<float>(random.uniform(), random.uniform());
 				if (random.uniform() < 0.5) {
 					sample.z = -sample.z;
 				}
 
-				c += sample;
+				REQUIRE(glm::length2(sample) == Approx(1.0f).margin(1.0e-5f));
+
+				for (int j = 0; j < 3; ++j) {
+					cs[j] += sample[j];
+					means[j] = cs[j] / float(i + 1);
+				}
 			}
-			c /= N;
-			REQUIRE(std::abs(c.x) < 0.01);
-			REQUIRE(std::abs(c.y) < 0.01);
-			REQUIRE(std::abs(c.z) < 0.01);
+
+			for (int j = 0; j < 3; ++j) {
+				REQUIRE(std::abs(means[j]) < 0.002f);
+			}
 		}
 	}
 }
@@ -139,7 +160,7 @@ TEST_CASE("sample_on_unit_sphere", "[sample_on_unit_sphere]") {
 TEST_CASE("OrthonormalBasis", "[OrthonormalBasis]") {
 	DefaultRandom random;
 	for (int j = 0; j < 100000; ++j) {
-		auto zAxis = rt::sample_on_unit_sphere(&random);
+		auto zAxis = rt::sample_on_unit_sphere<double>(random.uniform(), random.uniform());
 		rt::OrthonormalBasis space(zAxis);
 
 		REQUIRE(glm::dot(space.xaxis, space.yaxis) == Approx(0.0).margin(1.0e-15));
@@ -151,7 +172,7 @@ TEST_CASE("OrthonormalBasis", "[OrthonormalBasis]") {
 			REQUIRE(glm::abs(space.zaxis[j] - maybe_zaxis[j]) < 1.0e-15);
 		}
 
-		auto anyvector = sample_on_unit_sphere(&random);
+		auto anyvector = rt::sample_on_unit_sphere<double>(random.uniform(), random.uniform());
 		auto samevector = space.localToGlobal(space.globalToLocal(anyvector));
 
 		for (int j = 0; j < 3; ++j) {
@@ -164,7 +185,7 @@ TEST_CASE("PlaneEquation", "[PlaneEquation]") {
 	SECTION("basic") {
 		DefaultRandom random;
 		for (int i = 0; i < 100; ++i) {
-			auto n = rt::sample_on_unit_sphere(&random);
+			auto n = rt::sample_on_unit_sphere<double>(random.uniform(), random.uniform());
 			glm::dvec3 point_on_plane = { random.uniform(), random.uniform(), random.uniform() };
 
 			rt::PlaneEquation<double> p;
