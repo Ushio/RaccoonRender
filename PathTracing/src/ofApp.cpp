@@ -94,6 +94,7 @@ void ofApp::draw() {
 
 		if (ofGetFrameNum() % 5 == 0) {
 			_image.setFromPixels(toOf(_renderer->_image));
+			_image.getTexture().setTextureMinMagFilter(GL_NEAREST, GL_NEAREST);
 		}
 		uint32_t n = _renderer->stepCount();
 		if (32 <= n && isPowerOfTwo(n)) {
@@ -166,11 +167,14 @@ void ofApp::draw() {
 		_camera.enableMouseInput();
 	}
 
+	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+	float xscale, yscale;
+	glfwGetMonitorContentScale(monitor, &xscale, &yscale);
+
 	ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(1100, 900), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(1100 * xscale, 900 * yscale), ImGuiCond_Appearing);
 	ImGui::SetNextWindowCollapsed(false, ImGuiCond_Appearing);
 	ImGui::SetNextWindowBgAlpha(0.5f);
-
 
 	ImGui::Begin("settings", nullptr);
 	ImGui::Checkbox("scene preview", &show_scene_preview);
@@ -189,7 +193,8 @@ void ofApp::draw() {
 	ImGui::Text("%.3f MRays/s", (double)_renderer->getRaysPerSecond() * 0.001 * 0.001);
 
 	if (_image.isAllocated()) {
-		ofxRaccoonImGui::image(_image);
+
+		ofxRaccoonImGui::image(_image, _image.getWidth() * xscale, _image.getHeight() * yscale);
 	}
 	ImGui::End();
 }

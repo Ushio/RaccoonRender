@@ -40,17 +40,17 @@ namespace rt {
 	};
 
 	/*
-	http://xoshiro.di.unimi.it/xoshiro128plus.c
+	http://xoshiro.di.unimi.it/xoshiro128starstar.c
 	*/
-	struct Xoshiro128Plus : public PeseudoRandom {
-		Xoshiro128Plus() {
+	struct Xoshiro128StarStar : public PeseudoRandom {
+		Xoshiro128StarStar() {
 			splitmix sp;
 			sp.x = 38927482;
 			for (int i = 0; i < 4; ++i) {
 				s[i] = std::max((uint32_t)sp.next(), 1u);
 			}
 		}
-		Xoshiro128Plus(uint32_t seed) {
+		Xoshiro128StarStar(uint32_t seed) {
 			splitmix sp;
 			sp.x = seed;
 			for (int i = 0; i < 4; ++i) {
@@ -65,11 +65,10 @@ namespace rt {
 			return value;
 		}
 		uint64_t uniform_integer() override {
-			// (0xFFFFFFFF >> 11) <<43 | (0xFFFFFFFF >> 11) << 22  | (0xFFFFFFFF >> 10) 
-			uint64_t a = next() >> 11;
-			uint64_t b = next() >> 11;
-			uint64_t c = next() >> 10;
-			return (a << 43) | (b << 22) | c;
+			// [0, 2^62-1]
+			uint64_t a = next() >> 1;
+			uint64_t b = next() >> 1;
+			return (a << 31) | b;
 		}
 		/* 
 		This is the jump function for the generator. It is equivalent
@@ -100,11 +99,11 @@ namespace rt {
 			s[3] = s3;
 		}
 	private:
-		inline uint32_t rotl(const uint32_t x, int k) {
+		uint32_t rotl(const uint32_t x, int k) {
 			return (x << k) | (x >> (32 - k));
 		}
 		uint32_t next() {
-			const uint32_t result_plus = s[0] + s[3];
+			const uint32_t result_starstar = rotl(s[0] * 5, 7) * 9;
 
 			const uint32_t t = s[1] << 9;
 
@@ -117,7 +116,7 @@ namespace rt {
 
 			s[3] = rotl(s[3], 11);
 
-			return result_plus;
+			return result_starstar;
 		}
 	private:
 		uint32_t s[4];
@@ -154,6 +153,7 @@ namespace rt {
 			return value;
 		}
 		uint64_t uniform_integer() override {
+			// [0, 2^64-1]
 			return (uint64_t(next()) << 32) | uint64_t(next());
 		}
 	private:

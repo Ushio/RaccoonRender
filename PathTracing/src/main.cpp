@@ -1,11 +1,20 @@
 ﻿#include "ofMain.h"
 #include "ofApp.h"
 
+
 #define USE_MODERN_OPENGL 0
 
 //========================================================================
 int main() {
-	ofSetupOpenGL(1280, 960, OF_WINDOW);
+	glfwInit();
+	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+	float xscale, yscale;
+	glfwGetMonitorContentScale(monitor, &xscale, &yscale);
+
+	float w = 1280;
+	float h = 960;
+	ofSetupOpenGL(w * xscale, h * yscale, OF_WINDOW);
+
 	//#if USE_MODERN_OPENGL
 	//	ofGLWindowSettings settings;
 	//	settings.setGLVersion(4, 2);

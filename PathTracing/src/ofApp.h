@@ -2,6 +2,8 @@
 
 #include "ofMain.h"
 
+#include <GLFW/glfw3.h>
+
 #include "ofxRaccoonImGui.hpp"
 #include "houdini_alembic.hpp"
 #include "path_tracing.hpp"
