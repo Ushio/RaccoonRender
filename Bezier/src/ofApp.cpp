@@ -41,8 +41,8 @@ void ofApp::draw(){
 
 	using namespace rt;
 
-	float cx[4] = { 0.0f, 0.250578f, 0.398612f, 0.730918 };
-	float cy[4] = { 1.0f, 1.0f,      0.056f,    0.0f };
+	float cx[4] = { 0.0f, 0.256f, 0.394f, 0.730918f };
+	float cy[4] = { 1.0f, 1.0f,   0.056f, 0.0f };
 
 	{
 		ofPolyline line;

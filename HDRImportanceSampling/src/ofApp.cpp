@@ -8,6 +8,7 @@
 #include "assertion.hpp"
 #include "envmap.hpp"
 #include "spherical_sampler.hpp"
+#include "cubic_bezier.hpp"
 
 rt::Image2D image;
 std::shared_ptr<rt::EnvironmentMap> envmap;
@@ -20,7 +21,19 @@ void ofApp::setup() {
 	_camera.setFarClip(100.0f);
 	_camera.setDistance(5.0f);
 
-	envmap = std::shared_ptr<rt::EnvironmentMap>(new rt::ImageEnvmap(ofToDataPath("zhengyang_gate_1k.hdr")));
+	auto weight_for_direction = [](glm::vec3 direction) {
+		float cx[4] = { 0.0f, 0.256f, 0.394f, 0.730918f };
+		float cy[4] = { 1.0f, 1.0f,   0.056f, 0.0f };
+
+		glm::vec3 axis = { 1, 0, 0 };
+		float theta = glm::acos(glm::dot(direction, axis));
+		float w = rt::evaluate_bezier_funtion(theta / glm::pi<float>(), cx, cy, 5);
+		return w;
+		// return std::max(direction.y, 0.0f);
+	};
+	envmap = std::shared_ptr<rt::EnvironmentMap>(new rt::ImageEnvmap(
+		ofToDataPath("zhengyang_gate_1k.hdr"), weight_for_direction
+	));
 
 	image.load(ofToDataPath("zhengyang_gate_tiny.hdr").c_str());
 }
@@ -92,72 +105,23 @@ void ofApp::draw() {
 
 	rt::PCG32 random;
 
-	if (sample_on_sphere) {
+	{
+		// サンプリングテスト
 		for (int i = 0; i < 10000; ++i) {
 			auto wi = envmap->sample(&random, glm::vec3(0, 1, 0));
 			auto L = envmap->radiance(wi);
 			float Y = 0.2126f * L.x + 0.7152f * L.y + 0.0722f * L.z;
 
-			mesh.addVertex(reinhard(Y, 20) * wi);
-			mesh.addColor(ofFloatColor(
-				reinhard(L.x, 20),
-				reinhard(L.y, 20),
-				reinhard(L.z, 20),
-				1.0f
-			));
+			// mesh.addVertex(reinhard(Y, 20) * wi);
+			mesh.addVertex(wi);
+
+			//mesh.addColor(ofFloatColor(
+			//	reinhard(L.x, 20),
+			//	reinhard(L.y, 20),
+			//	reinhard(L.z, 20),
+			//	1.0f
+			//));
 		}
-		ofSetColor(255);
-		mesh.draw();
-	}
-	else {
-		static std::vector<glm::vec3> ps;
-
-		ps.clear();
-		int N = 10000;
-		for (int i = 0; i < N; ++i) {
-			glm::vec3 rd;
-			float maxYZ;
-			do {
-				rd = rt::sample_on_unit_sphere(random.uniform(), random.uniform());
-				glm::vec3 abs_rd = glm::abs(rd);
-				maxYZ = std::max(abs_rd.y, abs_rd.z);
-			} while (rd.x < maxYZ);
-
-			ps.push_back(rd);
-
-			//glm::vec3 abs_rd = glm::abs(rd);
-			//float maxYZ = std::max(abs_rd.y, abs_rd.z);
-			//float maxXZ = std::max(abs_rd.x, abs_rd.z);
-
-			//Axis direction;
-			//if (maxYZ < abs_rd.x) {
-			//	direction = 0.0f < rd.x ? Axis_XPlus : Axis_XMinus;
-			//}
-			//else if (maxXZ < abs_rd.y) {
-			//	direction = 0.0f < rd.y ? Axis_YPlus : Axis_YMinus;
-			//}
-			//else {
-			//	direction = 0.0f < rd.z ? Axis_ZPlus : Axis_ZMinus;
-			//}
-		}
-		for (int i = 0; i < N; ++i) {
-			// glm::vec3 rd = ps[i];
-			glm::vec3 rd = rt::sample_on_unit_sphere(random.uniform(), random.uniform());
-
-			float sum = 0;
-			for (glm::vec3 o : ps) {
-				sum += glm::max(glm::dot(o, rd), 0.0f);
-			}
-			float avg = sum / N;
-
-			//mesh.addVertex(rd);
-			//mesh.addColor(ofColor(255));
-
-			mesh.addVertex(rd * avg);
-			mesh.addColor(ofColor(255, 0, 0));
-		}
-
-
 		ofSetColor(255);
 		mesh.draw();
 	}

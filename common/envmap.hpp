@@ -1,8 +1,11 @@
 ﻿#pragma once
+#include <functional>
 #include <glm/glm.hpp>
 #include "material.hpp"
 #include "alias_method.hpp"
 #include "assertion.hpp"
+
+
 namespace rt {
 
 	class EnvironmentMap {
@@ -29,12 +32,13 @@ namespace rt {
 
 	class ImageEnvmap : public EnvironmentMap {
 	public:
-		ImageEnvmap(std::string filePath) :_texture(new Image2D()) {
+		ImageEnvmap(std::string filePath, std::function<float(glm::vec3)> weight_for_direction = [](glm::vec3) { return 1.0f; }) :_texture(new Image2D()) {
 			_texture->load(filePath.c_str());
 
 			// テスト用 クランプ
 			// _texture->clamp_rgb(0.0f, 20.0f);
 			double theta_step = glm::pi<double>() / _texture->height();
+			double phi_step = -glm::two_pi<float>() / _texture->width();
 
 			// beg_theta ~ end_thetaの挟まれた領域
 			auto solid_angle_sliced_sphere = [](double beg_theta, double end_theta) {
@@ -51,10 +55,14 @@ namespace rt {
 				double end_theta = beg_theta + theta_step;
 				double sr = solid_angle_sliced_sphere(beg_theta, end_theta) / _texture->width();
 
+				double theta = (beg_theta + end_theta) * 0.5;
 				for (int x = 0; x < image.width(); ++x) {
+					double phi = phi_step * (x + 0.5);
+					glm::vec3 direction = to_cartesian(theta, phi);
+
 					glm::vec4 radiance = image(x, y);
 					float Y = 0.2126f * radiance.x + 0.7152f * radiance.y + 0.0722f * radiance.z;
-					weights[y * image.width() + x] = Y * sr;
+					weights[y * image.width() + x] = Y * sr * weight_for_direction(direction);
 				}
 			}
 			_aliasMethod.prepare(weights);
@@ -65,8 +73,9 @@ namespace rt {
 				double beg_theta = theta_step * iy;
 				double end_theta = beg_theta + theta_step;
 				double sr = solid_angle_sliced_sphere(beg_theta, end_theta) / _texture->width();
-
+				
 				for (int ix = 0; ix < image.width(); ++ix) {
+					double phi = phi_step * (ix + 0.5);
 					int index = iy * image.width() + ix;
 					double p = _aliasMethod.probability(index);
 					_pdf[index] = p * (1.0 / sr);
@@ -91,6 +100,13 @@ namespace rt {
 			}
 			return true;
 		}
+		glm::vec3 to_cartesian(float theta, float phi) const {
+			float sinTheta = std::sin(theta);
+			float x = sinTheta * std::cos(phi);
+			float y = sinTheta * std::sin(phi);
+			float z = std::cos(theta);
+			return glm::vec3(y, z, x);
+		};
 
 		virtual glm::vec3 radiance(const glm::vec3 &rd) const override {
 			float theta;
