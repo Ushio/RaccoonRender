@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <stack>
+#include "assertion.hpp"
 
 namespace rt {
 	template <class Real>

@@ -1,7 +1,8 @@
 ﻿#pragma once
 #include <glm/glm.hpp>
+#include "material.hpp"
 #include "alias_method.hpp"
-
+#include "assertion.hpp"
 namespace rt {
 
 	class EnvironmentMap {

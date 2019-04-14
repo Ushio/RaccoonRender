@@ -14,18 +14,19 @@
 #include "assertion.hpp"
 #include "value_prportional_sampler.hpp"
 #include "alias_method.hpp"
+#include "n_order_equation.hpp"
 #include "plot.hpp"
 
-using DefaultRandom = rt::Xoshiro128Plus;
+using DefaultRandom = rt::Xoshiro128StarStar;
 
 void run_unit_test() {
 	static Catch::Session session;
-	//char* custom_argv[] = {
-	//	"",
-	//	"[sample_on_unit_sphere]"
-	//};
-	// session.run(sizeof(custom_argv) / sizeof(custom_argv[0]), custom_argv);
-	session.run();
+	char* custom_argv[] = {
+		"",
+		"[random]"
+	};
+	 session.run(sizeof(custom_argv) / sizeof(custom_argv[0]), custom_argv);
+	//session.run();
 }
 
 TEST_CASE("random", "[random]") {
@@ -60,7 +61,7 @@ TEST_CASE("random", "[random]") {
 		}
 	};
 	SECTION("Xoshiro128Plus") {
-		run(&rt::Xoshiro128Plus(3));
+		run(&rt::Xoshiro128StarStar(3));
 	}
 	SECTION("PCG") {
 		run(&rt::PCG32(43, 1));
@@ -376,3 +377,4 @@ TEST_CASE("AliasMethod", "[AliasMethod]") {
 		}
 	}
 }
+
