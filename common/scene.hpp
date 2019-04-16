@@ -230,7 +230,9 @@ namespace rt {
 						filePath.make_preferred();
 
 						auto absFilePath = _abcDirectory / filePath;
-						_environmentMap = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(absFilePath.string()));
+						
+						// _environmentMap = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(absFilePath.string()));
+						_environmentMap = std::shared_ptr<SixAxisImageEnvmap>(new SixAxisImageEnvmap(absFilePath.string()));
 					}
 				}
 			}

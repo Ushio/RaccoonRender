@@ -4,7 +4,8 @@
 #include "material.hpp"
 #include "alias_method.hpp"
 #include "assertion.hpp"
-
+#include "cube_section.hpp"
+#include "cubic_bezier.hpp"
 
 namespace rt {
 
@@ -36,7 +37,8 @@ namespace rt {
 			_texture->load(filePath.c_str());
 
 			// テスト用 クランプ
-			// _texture->clamp_rgb(0.0f, 20.0f);
+			_texture->clamp_rgb(0.0f, 10000.0f);
+
 			double theta_step = glm::pi<double>() / _texture->height();
 			double phi_step = -glm::two_pi<float>() / _texture->width();
 
@@ -169,5 +171,72 @@ namespace rt {
 		std::unique_ptr<Image2D> _texture;
 		std::vector<float> _pdf;
 		AliasMethod<double> _aliasMethod;
+	};
+
+	class SixAxisImageEnvmap : public EnvironmentMap {
+	public:
+		SixAxisImageEnvmap(std::string filePath) {
+			auto weight_for_direction = [](glm::vec3 direction, glm::vec3 cube_dir) {
+				//float cx[4] = { 0.0f, 0.256f, 0.394f, 0.730918f };
+				//float cy[4] = { 1.0f, 1.0f,   0.056f, 0.0f };
+
+				//float theta = glm::acos(glm::dot(direction, cube_dir));
+				//float w = evaluate_bezier_funtion(theta / glm::pi<float>(), cx, cy, 5);
+				//return w;
+				return std::max(glm::dot(direction, cube_dir), 0.0f);
+			};
+			_cubeEnvmap[0] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(+1, 0, 0)); }));
+			_cubeEnvmap[1] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(-1, 0, 0)); }));
+			_cubeEnvmap[2] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, +1, 0)); }));
+			_cubeEnvmap[3] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, -1, 0)); }));
+			_cubeEnvmap[4] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, 0, +1)); }));
+			_cubeEnvmap[5] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, 0, -1)); }));
+		}
+		virtual glm::vec3 radiance(const glm::vec3 &rd) const override {
+			return _cubeEnvmap[0]->radiance(rd);
+		}
+		virtual float pdf(const glm::vec3 &rd, const glm::vec3 &n) const override {
+			CubeSection xaxis = 0.0f < n.x ? CubeSection_XPlus : CubeSection_XMinus;
+			CubeSection yaxis = 0.0f < n.y ? CubeSection_YPlus : CubeSection_YMinus;
+			CubeSection zaxis = 0.0f < n.z ? CubeSection_ZPlus : CubeSection_ZMinus;
+			glm::vec3 p_axis = n * n;
+			RT_ASSERT(std::fabs(p_axis.x + p_axis.y + p_axis.z - 1.0f) < 1.0e-4f);
+
+			// glm::vec3 p_axis = { 1.0f / 3.0f , 1.0f / 3.0f , 1.0f / 3.0f };
+			// glm::vec3 p_axis = { 0, 1, 0 };
+			float p = 0.0f;
+			p += p_axis.x * _cubeEnvmap[xaxis]->pdf(rd, n);
+			p += p_axis.y * _cubeEnvmap[yaxis]->pdf(rd, n);
+			p += p_axis.z * _cubeEnvmap[zaxis]->pdf(rd, n);
+			RT_ASSERT(std::numeric_limits<float>::epsilon() < p);
+			// RT_ASSERT(std::isnan(p) == false);
+			return p;
+			// return _cubeEnvmap[cube_section(n)]->pdf(rd, n);
+		}
+		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n) const override {
+			CubeSection xaxis = 0.0f < n.x ? CubeSection_XPlus : CubeSection_XMinus;
+			CubeSection yaxis = 0.0f < n.y ? CubeSection_YPlus : CubeSection_YMinus;
+			CubeSection zaxis = 0.0f < n.z ? CubeSection_ZPlus : CubeSection_ZMinus;
+			glm::vec3 p_axis = n * n;
+			RT_ASSERT(std::fabs(p_axis.x + p_axis.y + p_axis.z - 1.0f) < 1.0e-4f);
+			// glm::vec3 p_axis = { 1.0f / 3.0f , 1.0f / 3.0f , 1.0f / 3.0f };
+			// glm::vec3 p_axis = { 0, 1, 0 };
+			float axis_random = random->uniform();
+			CubeSection selection;
+			if (axis_random < p_axis.x) {
+				selection = xaxis;
+			}
+			else if (axis_random < p_axis.x + p_axis.y) {
+				selection = yaxis;
+			}
+			else {
+				selection = zaxis;
+			}
+			return _cubeEnvmap[selection]->sample(random, n);
+
+			// return _cubeEnvmap[cube_section(n)]->sample(random, n);
+		}
+	private:
+		std::shared_ptr<ImageEnvmap> _cubeEnvmap[6];
 	};
 }
