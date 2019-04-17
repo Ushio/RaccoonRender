@@ -6,6 +6,7 @@
 #include "assertion.hpp"
 #include "cube_section.hpp"
 #include "cubic_bezier.hpp"
+#include "linear_transform.hpp"
 
 namespace rt {
 
@@ -14,7 +15,7 @@ namespace rt {
 		virtual ~EnvironmentMap() {}
 		virtual glm::vec3 radiance(const glm::vec3 &wi) const = 0;
 		virtual float pdf(const glm::vec3 &rd, const glm::vec3 &n) const = 0;
-		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n) const = 0;
+		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n, float *pdf) const = 0;
 	};
 
 	class ConstantEnvmap : public EnvironmentMap {
@@ -25,11 +26,102 @@ namespace rt {
 		virtual float pdf(const glm::vec3 &rd, const glm::vec3 &n) const override {
 			return CosThetaProportionalSampler::pdf(rd, n);
 		}
-		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n) const override {
+		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n, float *pdf) const override {
 			return CosThetaProportionalSampler::sample(random, n);
 		}
 		glm::vec3 constant;
 	};
+
+	template <class Real>
+	class EnvmapCoordinateSystem {
+	public:
+		EnvmapCoordinateSystem(int w, int h)
+			:_width(w), _height(h),
+			_phi_step(glm::two_pi<Real>() / w), _theta_step(glm::pi<Real>() / h),
+			_theta_to_y(Real(0.0), glm::pi<Real>(), Real(0.0), h),
+			_phi_to_x(glm::two_pi<Real>(), Real(0.0), Real(0.0), w)
+		{
+
+		}
+		void index_to_phi_range(int xi, Real *lower_phi, Real *upper_phi) const {
+			*upper_phi = glm::two_pi<Real>() - xi * _phi_step;
+			*lower_phi = *upper_phi - _phi_step;
+		}
+		Real index_to_phi_mid(int xi) const {
+			Real upper_phi, lower_phi;
+			index_to_phi_range(xi, &upper_phi, &lower_phi);
+			return (upper_phi + lower_phi) * Real(0.5);
+		}
+		void index_to_theta_range(int yi, Real *lower_theta, Real *upper_theta) const {
+			*lower_theta = _theta_step * yi;
+			*upper_theta = *lower_theta + _theta_step;
+		}
+		Real index_to_theta_mid(int yi) const {
+			Real lower_theta, upper_theta;
+			index_to_theta_range(yi, &lower_theta, &upper_theta);
+			return (lower_theta + upper_theta) * Real(0.5);
+		}
+		int theta_to_y(Real theta) const {
+			return (int)std::floor(_theta_to_y.evaluate(theta));
+		}
+		int phi_to_x(Real phi) const {
+			return (int)std::floor(_phi_to_x.evaluate(phi));
+		}
+		int width() const {
+			return _width;
+		}
+		int height() const {
+			return _height;
+		}
+	private:
+		int _width, _height;
+		Real _phi_step, _theta_step;
+		LinearTransform<double> _theta_to_y;
+		LinearTransform<double> _phi_to_x;
+	};
+
+	// beg_theta ~ end_thetaの挟まれた部分の立体角
+	template <class Real>
+	double solid_angle_sliced_sphere(Real beg_theta, Real end_theta) {
+		Real beg_y = std::cos(beg_theta);
+		Real end_y = std::cos(end_theta);
+		return (beg_y - end_y) * glm::two_pi<Real>();
+	}
+	template <class Real>
+	glm::tvec3<Real> polar_to_cartesian(Real theta, Real phi) {
+		Real sinTheta = std::sin(theta);
+		Real x = sinTheta * std::cos(phi);
+		Real y = sinTheta * std::sin(phi);
+		Real z = std::cos(theta);
+		return glm::tvec3<Real>(y, z, x);
+	};
+
+	// unit cylinder to unit sphere
+	template <class Real>
+	glm::tvec3<Real> project_cylinder_to_sphere(glm::tvec3<Real> p) {
+		Real r_xz = std::sqrt(std::max(1.0f - p.y * p.y, 0.0f));
+		p.x *= r_xz;
+		p.z *= r_xz;
+		return p;
+	}
+	// always positive
+	// phi = 0.0 ~ 2.0 * pi
+	// theta = 0.0 ~ pi
+	template <class Real>
+	bool cartesian_to_polar_always_positive(glm::tvec3<Real> rd, Real *theta, Real *phi) {
+		Real z = rd.y;
+		Real x = rd.z;
+		Real y = rd.x;
+		*theta = std::acos(z);
+		*phi = std::atan2(y, x);
+		if (*phi < Real(0.0f)) {
+			*phi += glm::two_pi<Real>();
+		}
+		if (std::isfinite(*theta) == false || std::isfinite(*phi) == false) {
+			return false;
+		}
+		return true;
+	}
 
 	class ImageEnvmap : public EnvironmentMap {
 	public:
@@ -39,29 +131,20 @@ namespace rt {
 			// テスト用 クランプ
 			_texture->clamp_rgb(0.0f, 10000.0f);
 
-			double theta_step = glm::pi<double>() / _texture->height();
-			double phi_step = -glm::two_pi<float>() / _texture->width();
-
-			// beg_theta ~ end_thetaの挟まれた領域
-			auto solid_angle_sliced_sphere = [](double beg_theta, double end_theta) {
-				double beg_y = std::cos(beg_theta);
-				double end_y = std::cos(end_theta);
-				return (beg_y - end_y) * glm::two_pi<double>();
-			};
+			EnvmapCoordinateSystem<double> envCoord(_texture->width(), _texture->height());
 
 			// Selection Weight
 			const Image2D &image = *_texture;
 			std::vector<double> weights(image.width() * image.height());
 			for (int y = 0; y < image.height(); ++y) {
-				double beg_theta = theta_step * y;
-				double end_theta = beg_theta + theta_step;
+				double beg_theta, end_theta;
+				envCoord.index_to_theta_range(y, &beg_theta, &end_theta);
 				double sr = solid_angle_sliced_sphere(beg_theta, end_theta) / _texture->width();
-
 				double theta = (beg_theta + end_theta) * 0.5;
 				for (int x = 0; x < image.width(); ++x) {
-					double phi = phi_step * (x + 0.5);
-					glm::vec3 direction = to_cartesian(theta, phi);
+					double phi = envCoord.index_to_phi_mid(x);
 
+					glm::vec3 direction = polar_to_cartesian(theta, phi);
 					glm::vec4 radiance = image(x, y);
 					float Y = 0.2126f * radiance.x + 0.7152f * radiance.y + 0.0722f * radiance.z;
 					weights[y * image.width() + x] = Y * sr * weight_for_direction(direction);
@@ -72,48 +155,24 @@ namespace rt {
 			// Precomputed PDF
 			_pdf.resize(image.width() * image.height());
 			for (int iy = 0; iy < image.height(); ++iy) {
-				double beg_theta = theta_step * iy;
-				double end_theta = beg_theta + theta_step;
+				double beg_theta, end_theta;
+				envCoord.index_to_theta_range(iy, &beg_theta, &end_theta);
 				double sr = solid_angle_sliced_sphere(beg_theta, end_theta) / _texture->width();
 				
 				for (int ix = 0; ix < image.width(); ++ix) {
-					double phi = phi_step * (ix + 0.5);
 					int index = iy * image.width() + ix;
 					double p = _aliasMethod.probability(index);
 					_pdf[index] = p * (1.0 / sr);
 				}
 			}
-		}
 
-		// always positive
-		// phi = 0.0 ~ 2.0 * pi
-		// theta = 0.0 ~ pi
-		bool spherical_coordinate_positive(glm::vec3 rd, float *theta, float *phi) const {
-			float z = rd.y;
-			float x = rd.z;
-			float y = rd.x;
-			*theta = std::acos(z);
-			*phi = std::atan2(y, x);
-			if (*phi < 0.0f) {
-				*phi += glm::two_pi<float>();
-			}
-			if (isfinite(*theta) == false || isfinite(*phi) == false) {
-				return false;
-			}
-			return true;
+			_envCoordF = std::unique_ptr<EnvmapCoordinateSystem<float>>(new EnvmapCoordinateSystem<float>(_texture->width(), _texture->height()));
 		}
-		glm::vec3 to_cartesian(float theta, float phi) const {
-			float sinTheta = std::sin(theta);
-			float x = sinTheta * std::cos(phi);
-			float y = sinTheta * std::sin(phi);
-			float z = std::cos(theta);
-			return glm::vec3(y, z, x);
-		};
 
 		virtual glm::vec3 radiance(const glm::vec3 &rd) const override {
 			float theta;
 			float phi;
-			if (spherical_coordinate_positive(rd, &theta, &phi) == false) {
+			if (cartesian_to_polar_always_positive(rd, &theta, &phi) == false) {
 				return glm::vec3(0.0);
 			}
 
@@ -129,45 +188,43 @@ namespace rt {
 		float pdf(const glm::vec3 &rd, const glm::vec3 &n) const {
 			float theta;
 			float phi;
-			if (spherical_coordinate_positive(rd, &theta, &phi) == false) {
+			if (cartesian_to_polar_always_positive(rd, &theta, &phi) == false) {
 				return 0.0f;
 			}
 
-			// 1.0f - is clockwise order envmap
-			float u = 1.0f - phi / (2.0f * glm::pi<float>());
-			float v = theta / glm::pi<float>();
-
-			int ix = u * _texture->width();
-			int iy = v * _texture->height();
-			ix = glm::clamp(ix, 0, _texture->width() - 1);
-			iy = glm::clamp(iy, 0, _texture->height() - 1);
-
+			int ix = _envCoordF->phi_to_x(phi);
+			int iy = _envCoordF->theta_to_y(theta);
 			return _pdf[iy * _texture->width() + ix];
 		}
-		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n) const override {
+		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n, float *pdf) const override {
 			const Image2D &image = *_texture;
 
 			int index = _aliasMethod.sample(random->uniform_integer(), random->uniform());
 			int ix = index % image.width();
 			int iy = index / image.width();
-			float sample_x = ix + random->uniform();
 
-			float theta_step = glm::pi<float>() / image.height();
-			float beg_theta = theta_step * iy;
-			float end_theta = beg_theta + theta_step;
+			float beg_theta, end_theta;
+			_envCoordF->index_to_theta_range(iy, &beg_theta, &end_theta);
+			float beg_phi, end_phi;
+			_envCoordF->index_to_phi_range(ix, &beg_phi, &end_phi);
+
 			float beg_y = cos(beg_theta);
 			float end_y = cos(end_theta);
-
-			float phi = -glm::two_pi<float>() * (sample_x / image.width());
-
 			float y = glm::mix(beg_y, end_y, random->uniform());
-			float r_xz = std::sqrt(std::max(1.0f - y * y, 0.0f));
+			float phi = glm::mix(beg_phi, end_phi, random->uniform());
 
-			float x = r_xz * sin(phi);
-			float z = r_xz * cos(phi);
-			return glm::vec3(x, y, z);
+			glm::vec3 point_on_cylinder = {
+				std::sin(phi),
+				y,
+				std::cos(phi)
+			};
+
+			*pdf = _pdf[index];
+
+			return project_cylinder_to_sphere(point_on_cylinder);
 		}
 	private:
+		std::unique_ptr<EnvmapCoordinateSystem<float>> _envCoordF;
 		std::unique_ptr<Image2D> _texture;
 		std::vector<float> _pdf;
 		AliasMethod<double> _aliasMethod;
@@ -208,12 +265,12 @@ namespace rt {
 			p += p_axis.x * _cubeEnvmap[xaxis]->pdf(rd, n);
 			p += p_axis.y * _cubeEnvmap[yaxis]->pdf(rd, n);
 			p += p_axis.z * _cubeEnvmap[zaxis]->pdf(rd, n);
-			RT_ASSERT(std::numeric_limits<float>::epsilon() < p);
+			// RT_ASSERT(std::numeric_limits<float>::epsilon() < p);
 			// RT_ASSERT(std::isnan(p) == false);
 			return p;
 			// return _cubeEnvmap[cube_section(n)]->pdf(rd, n);
 		}
-		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n) const override {
+		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n, float *pdf) const override {
 			CubeSection xaxis = 0.0f < n.x ? CubeSection_XPlus : CubeSection_XMinus;
 			CubeSection yaxis = 0.0f < n.y ? CubeSection_YPlus : CubeSection_YMinus;
 			CubeSection zaxis = 0.0f < n.z ? CubeSection_ZPlus : CubeSection_ZMinus;
@@ -232,7 +289,7 @@ namespace rt {
 			else {
 				selection = zaxis;
 			}
-			return _cubeEnvmap[selection]->sample(random, n);
+			return _cubeEnvmap[selection]->sample(random, n, pdf);
 
 			// return _cubeEnvmap[cube_section(n)]->sample(random, n);
 		}

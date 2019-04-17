@@ -313,6 +313,21 @@ namespace rt {
 		glm::vec3 _o;
 	};
 
+	struct radiance_stat {
+		static radiance_stat &instance() {
+			static radiance_stat i;
+			return i;
+		}
+		double pdf_mismatch_ratio() const {
+			return (double)pdf_mismatch / (pdf_match + pdf_mismatch);
+		}
+		radiance_stat() {
+			pdf_match = 0;
+			pdf_mismatch = 0;
+		}
+		std::atomic<int> pdf_match;
+		std::atomic<int> pdf_mismatch;
+	};
 
 	inline glm::vec3 radiance(const rt::Scene *scene, glm::vec3 ro, glm::vec3 rd, PeseudoRandom *random, int px, int py, uint32_t *rays) {
 		// const float kSceneEPS = scene.adaptiveEps();
@@ -347,8 +362,17 @@ namespace rt {
 
 				// Explicit Connection To Envmap
 				if(true) {
+					float sampledPDF;
 					auto env = scene->envmap();
-					glm::vec3 light_wi = env->sample(random, shadingPoint.Ng);
+					glm::vec3 light_wi = env->sample(random, shadingPoint.Ng, &sampledPDF);
+
+					if (env->pdf(light_wi, shadingPoint.Ng) != sampledPDF) {
+						radiance_stat::instance().pdf_mismatch++;
+					}
+					else {
+						radiance_stat::instance().pdf_match++;
+					}
+
 					float absCosTheta = glm::abs(glm::dot(shadingPoint.Ng, light_wi));
 					ShadingPoint ls;
 					float ltmin = std::numeric_limits<float>::max();

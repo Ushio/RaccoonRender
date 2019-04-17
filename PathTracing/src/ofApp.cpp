@@ -186,7 +186,8 @@ void ofApp::draw() {
 	ImGui::Text("%d bad sample inf", _renderer->badSampleInfCount());
 	ImGui::Text("%d bad sample neg", _renderer->badSampleNegativeCount());
 	ImGui::Text("%d bad sample firefly", _renderer->badSampleFireflyCount());
-
+	ImGui::Text("%f pdf_mismatch_ratio", rt::radiance_stat::instance().pdf_mismatch_ratio());
+	
 	if (ofGetFrameNum() % 10 == 0) {
 		_renderer->measureRaysPerSecond();
 	}
