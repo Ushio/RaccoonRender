@@ -112,7 +112,7 @@ namespace rt {
 		Real z = rd.y;
 		Real x = rd.z;
 		Real y = rd.x;
-		*theta = std::acos(z);
+		*theta = std::atan2(std::sqrt(x * x + y * y) , z);
 		*phi = std::atan2(y, x);
 		if (*phi < Real(0.0f)) {
 			*phi += glm::two_pi<Real>();
@@ -125,11 +125,8 @@ namespace rt {
 
 	class ImageEnvmap : public EnvironmentMap {
 	public:
-		ImageEnvmap(std::string filePath, std::function<float(glm::vec3)> weight_for_direction = [](glm::vec3) { return 1.0f; }) :_texture(new Image2D()) {
-			_texture->load(filePath.c_str());
-
-			// テスト用 クランプ
-			_texture->clamp_rgb(0.0f, 10000.0f);
+		ImageEnvmap(std::shared_ptr<Image2D> texture, std::function<float(glm::vec3)> weight_for_direction = [](glm::vec3) { return 1.0f; }) {
+			_texture = texture;
 
 			EnvmapCoordinateSystem<double> envCoord(_texture->width(), _texture->height());
 
@@ -194,6 +191,7 @@ namespace rt {
 
 			int ix = _envCoordF->phi_to_x(phi);
 			int iy = _envCoordF->theta_to_y(theta);
+
 			return _pdf[iy * _texture->width() + ix];
 		}
 		virtual glm::vec3 sample(PeseudoRandom *random, const glm::vec3 &n, float *pdf) const override {
@@ -225,14 +223,14 @@ namespace rt {
 		}
 	private:
 		std::unique_ptr<EnvmapCoordinateSystem<float>> _envCoordF;
-		std::unique_ptr<Image2D> _texture;
+		std::shared_ptr<Image2D> _texture;
 		std::vector<float> _pdf;
 		AliasMethod<double> _aliasMethod;
 	};
 
 	class SixAxisImageEnvmap : public EnvironmentMap {
 	public:
-		SixAxisImageEnvmap(std::string filePath) {
+		SixAxisImageEnvmap(std::shared_ptr<Image2D> texture) {
 			auto weight_for_direction = [](glm::vec3 direction, glm::vec3 cube_dir) {
 				//float cx[4] = { 0.0f, 0.256f, 0.394f, 0.730918f };
 				//float cy[4] = { 1.0f, 1.0f,   0.056f, 0.0f };
@@ -242,12 +240,12 @@ namespace rt {
 				//return w;
 				return std::max(glm::dot(direction, cube_dir), 0.0f);
 			};
-			_cubeEnvmap[0] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(+1, 0, 0)); }));
-			_cubeEnvmap[1] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(-1, 0, 0)); }));
-			_cubeEnvmap[2] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, +1, 0)); }));
-			_cubeEnvmap[3] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, -1, 0)); }));
-			_cubeEnvmap[4] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, 0, +1)); }));
-			_cubeEnvmap[5] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(filePath, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, 0, -1)); }));
+			_cubeEnvmap[0] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(+1, 0, 0)); }));
+			_cubeEnvmap[1] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(-1, 0, 0)); }));
+			_cubeEnvmap[2] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, +1, 0)); }));
+			_cubeEnvmap[3] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, -1, 0)); }));
+			_cubeEnvmap[4] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, 0, +1)); }));
+			_cubeEnvmap[5] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, [=](glm::vec3 rd) { return weight_for_direction(rd, glm::vec3(0, 0, -1)); }));
 		}
 		virtual glm::vec3 radiance(const glm::vec3 &rd) const override {
 			return _cubeEnvmap[0]->radiance(rd);

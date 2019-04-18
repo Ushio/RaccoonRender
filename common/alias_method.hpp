@@ -1,5 +1,5 @@
 ﻿#pragma once
-
+#include <tbb/tbb.h>
 #include <vector>
 #include <stack>
 #include "assertion.hpp"
@@ -40,6 +40,7 @@ namespace rt {
 		Real _sum = Real(0.0);
 		Real _c = Real(0.0);
 	};
+	
 	template <class Real>
 	class AliasMethod {
 	public:
@@ -58,6 +59,7 @@ namespace rt {
 			int N = (int)weights.size();
 			probs.resize(N);
 			buckets.resize(N);
+
 			for (int i = 0; i < N; ++i) {
 				probs[i] = weights[i] * one_over_weight_sum;
 				buckets[i].height = probs[i] * N;
@@ -69,15 +71,17 @@ namespace rt {
 			//}
 			//Real h_avg = h_sum / N;
 
-			std::stack<int> lower;
-			std::stack<int> upper;
+			std::vector<int> lower;
+			std::vector<int> upper;
+			lower.reserve(N);
+			upper.reserve(N);
 
 			for (int i = 0; i < N; ++i) {
 				if (buckets[i].height < Real(1.0)) {
-					lower.push(i);
+					lower.push_back(i);
 				}
 				else {
-					upper.push(i);
+					upper.push_back(i);
 				}
 			}
 
@@ -86,11 +90,11 @@ namespace rt {
 					break;
 				}
 
-				int lower_index = lower.top();
-				lower.pop();
+				int lower_index = lower[lower.size() - 1];
+				lower.pop_back();
 
-				int upper_index = upper.top();
-				upper.pop();
+				int upper_index = upper[upper.size() - 1];
+				upper.pop_back();
 
 				RT_ASSERT(Real(1.0) <= buckets[upper_index].height);
 
@@ -99,10 +103,10 @@ namespace rt {
 				buckets[lower_index].alias = upper_index;
 
 				if (buckets[upper_index].height < Real(1.0)) {
-					lower.push(upper_index);
+					lower.push_back(upper_index);
 				}
 				else {
-					upper.push(upper_index);
+					upper.push_back(upper_index);
 				}
 
 				// lower is already completed

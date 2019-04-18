@@ -64,6 +64,12 @@ namespace rt {
 		const glm::vec4 &operator()(int x, int y) const {
 			return _values[y * _width + x];
 		}
+		glm::vec4 &sample(int x, int y) {
+			return _values[y * _width + x];
+		}
+		const glm::vec4 &sample(int x, int y) const {
+			return _values[y * _width + x];
+		}
 
 		/*
 		v
