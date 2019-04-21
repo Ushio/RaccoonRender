@@ -21,12 +21,12 @@ using DefaultRandom = rt::Xoshiro128StarStar;
 
 void run_unit_test() {
 	static Catch::Session session;
-	char* custom_argv[] = {
-		"",
-		"[random]"
-	};
-	 session.run(sizeof(custom_argv) / sizeof(custom_argv[0]), custom_argv);
-	//session.run();
+	//char* custom_argv[] = {
+	//	"",
+	//	"[random]"
+	//};
+	// session.run(sizeof(custom_argv) / sizeof(custom_argv[0]), custom_argv);
+	session.run();
 }
 
 TEST_CASE("random", "[random]") {
@@ -60,7 +60,7 @@ TEST_CASE("random", "[random]") {
 			REQUIRE(prob[j] == Approx(20.0f).margin(0.5f));
 		}
 	};
-	SECTION("Xoshiro128Plus") {
+	SECTION("Xoshiro128StarStar") {
 		run(&rt::Xoshiro128StarStar(3));
 	}
 	SECTION("PCG") {
@@ -299,9 +299,9 @@ TEST_CASE("triangle sampler", "[triangle sampler]") {
 				p2.x, p2.y, p2.z,
 			};
 			glm::vec3 abc = glm::inverse(m) * s;
-			REQUIRE(abc.x >= 0.0f);
-			REQUIRE(abc.y >= 0.0f);
-			REQUIRE(abc.z >= 0.0f);
+			REQUIRE(abc.x >= -1.0e-5f);
+			REQUIRE(abc.y >= -1.0e-5f);
+			REQUIRE(abc.z >= -1.0e-5f);
 
 			center_expect += s;
 		}
