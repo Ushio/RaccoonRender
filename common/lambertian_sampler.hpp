@@ -3,6 +3,8 @@
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 
+#include "orthonormal_basis.hpp"
+
 namespace rt {
 	// p(w) = cosθ / π
 	class CosThetaProportionalSampler {
