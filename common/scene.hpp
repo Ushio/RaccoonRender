@@ -236,7 +236,7 @@ namespace rt {
 						auto texture = std::shared_ptr<Image2D>(new Image2D());
 						texture->load(absFilePath.string().c_str());
 						// texture->clamp_rgb(0.0f, 10000.0f);
-						texture->clamp_rgb(0.0f, 1000.0f);
+						// texture->clamp_rgb(0.0f, 1000.0f);
 
 
 						// UniformDirectionWeight uniform_weight;

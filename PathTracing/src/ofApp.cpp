@@ -11,9 +11,9 @@ inline ofPixels toOf(const rt::Image &image) {
 			int index = y * image.width() + x;
 			const auto &px = *image.pixel(x, y);
 			auto L = px.color / (double)px.sample;
-			dst[index * 3 + 0] = (uint8_t)glm::clamp(glm::pow(L.x * scale, 1.0 / 2.2) * 255.0, 0.0, 255.99999);
-			dst[index * 3 + 1] = (uint8_t)glm::clamp(glm::pow(L.y * scale, 1.0 / 2.2) * 255.0, 0.0, 255.99999);
-			dst[index * 3 + 2] = (uint8_t)glm::clamp(glm::pow(L.z * scale, 1.0 / 2.2) * 255.0, 0.0, 255.99999);
+			dst[index * 3 + 0] = (uint8_t)glm::clamp(glm::pow(L.x * scale, 1.0 / 2.2) * 256.0, 0.0, 255.99999);
+			dst[index * 3 + 1] = (uint8_t)glm::clamp(glm::pow(L.y * scale, 1.0 / 2.2) * 256.0, 0.0, 255.99999);
+			dst[index * 3 + 2] = (uint8_t)glm::clamp(glm::pow(L.z * scale, 1.0 / 2.2) * 256.0, 0.0, 255.99999);
 		}
 	}
 	return pixels;

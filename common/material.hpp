@@ -103,7 +103,7 @@ namespace rt {
 		}
 	};
 
-	const static float alpha = 0.1;
+	const static float alpha = 0.6f;
 	class Ward : public BxDF {
 	public:
 		Ward() {}
@@ -164,9 +164,9 @@ namespace rt {
 			auto sqrsqr = [sqr](float x) {
 				return sqr(sqr(x));
 			};
-			auto abs_dot = [](glm::vec3 a, glm::vec3 b) {
-				return std::fabs(glm::dot(a, b));
-			};
+			//auto abs_dot = [](glm::vec3 a, glm::vec3 b) {
+			//	return std::fabs(glm::dot(a, b));
+			//};
 			glm::vec3 v = wo;
 			glm::vec3 l = wi;
 			glm::vec3 l_add_v = l + v;
@@ -181,9 +181,9 @@ namespace rt {
 			//return glm::vec3(k0 * k1 * k2);
 
 			float cosThetaH2 = sqr(glm::dot(h, Ng));
-			float tanTheta2 = (1.0f - cosThetaH2) / cosThetaH2;
+			float tanThetaH2 = (1.0f - cosThetaH2) / cosThetaH2;
 			float k0 = rho_s / (glm::pi<float>() * alpha2);
-			float k1 = std::exp(-tanTheta2 / alpha2);
+			float k1 = std::exp(-tanThetaH2 / alpha2);
 			float k2 = glm::dot(l_add_v, l_add_v) / sqrsqr(glm::dot(l_add_v, Ng));
 			return glm::vec3(k0 * k1 * k2);
 		}

@@ -313,11 +313,11 @@ namespace rt {
 	class SixAxisImageEnvmap : public EnvironmentMap {
 	public:
 		SixAxisImageEnvmap(std::shared_ptr<Image2D> texture) {
-			_cubeEnvmap[0] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, SixAxisDirectionWeight(CubeSection_XPlus)));
+			_cubeEnvmap[0] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, SixAxisDirectionWeight(CubeSection_XPlus )));
 			_cubeEnvmap[1] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, SixAxisDirectionWeight(CubeSection_XMinus)));
-			_cubeEnvmap[2] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, SixAxisDirectionWeight(CubeSection_YPlus)));
+			_cubeEnvmap[2] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, SixAxisDirectionWeight(CubeSection_YPlus )));
 			_cubeEnvmap[3] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, SixAxisDirectionWeight(CubeSection_YMinus)));
-			_cubeEnvmap[4] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, SixAxisDirectionWeight(CubeSection_ZPlus)));
+			_cubeEnvmap[4] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, SixAxisDirectionWeight(CubeSection_ZPlus )));
 			_cubeEnvmap[5] = std::shared_ptr<ImageEnvmap>(new ImageEnvmap(texture, SixAxisDirectionWeight(CubeSection_ZMinus)));
 		}
 		virtual glm::vec3 radiance(const glm::vec3 &rd) const override {
@@ -360,8 +360,16 @@ namespace rt {
 			else {
 				selection = zaxis;
 			}
-			return _cubeEnvmap[selection]->sample(random, n, pdf);
 
+			auto rd = _cubeEnvmap[selection]->sample(random, n, pdf);
+
+			float p = 0.0f;
+			p += p_axis.x * _cubeEnvmap[xaxis]->pdf(rd, n);
+			p += p_axis.y * _cubeEnvmap[yaxis]->pdf(rd, n);
+			p += p_axis.z * _cubeEnvmap[zaxis]->pdf(rd, n);
+
+			*pdf = p;
+			return rd;
 			// return _cubeEnvmap[cube_section(n)]->sample(random, n);
 		}
 	private:

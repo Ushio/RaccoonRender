@@ -329,11 +329,148 @@ namespace rt {
 		std::atomic<int> pdf_mismatch;
 	};
 
+	inline glm::vec3 bounce(glm::vec3 Lo, glm::vec3 T, int i, const rt::Scene *scene, glm::vec3 ro, glm::vec3 rd, PeseudoRandom *random, int px, int py, uint32_t *rays) {
+		const float kSceneEPS = 1.0e-5f;
+		const float kValueEPS = 1.0e-6f;
+
+		float tmin = 0.0f;
+		ShadingPoint shadingPoint;
+
+		glm::vec3 wo = -rd;
+
+		if (scene->intersect(ro, rd, &shadingPoint, &tmin)) {
+			RT_ASSERT(0.0f <= tmin);
+
+			auto p = ro + rd * (float)tmin;
+
+			shadingPoint.Ng = glm::normalize(shadingPoint.Ng);
+			bool backside = glm::dot(wo, shadingPoint.Ng) < 0.0f;
+
+			// Explicit Connection To Envmap
+			//if(true) {
+			//	float sampledPDF;
+			//	auto env = scene->envmap();
+			//	glm::vec3 light_wi = env->sample(random, shadingPoint.Ng, &sampledPDF);
+
+			//	if (env->pdf(light_wi, shadingPoint.Ng) != sampledPDF) {
+			//		radiance_stat::instance().pdf_mismatch++;
+			//	}
+			//	else {
+			//		radiance_stat::instance().pdf_match++;
+			//	}
+
+			//	float absCosTheta = glm::abs(glm::dot(shadingPoint.Ng, light_wi));
+			//	ShadingPoint ls;
+			//	float ltmin = std::numeric_limits<float>::max();
+			//	if (scene->intersect(p + 1.0e-4f * light_wi / absCosTheta, light_wi, &ls, &ltmin) == false) {
+			//		glm::vec3 contribution = env->radiance(light_wi) * T * shadingPoint.bxdf->bxdf(wo, light_wi, shadingPoint) * absCosTheta / (float)env->pdf(light_wi, shadingPoint.Ng);
+			//		Lo += contribution;
+			//	}
+			//}
+
+			// ここはもっと改良したい
+			//static thread_local LuminaireSampler directSampler;
+			//directSampler.prepare(&scene->luminaires(), p, backside ? -shadingPoint.Ng : shadingPoint.Ng, true);
+
+			//BxDFSampler bxdfSampler(wo, shadingPoint);
+			//MixtureSampler mixtureSampler(&bxdfSampler, &directSampler, directSampler.canSample() ? 0.5f : 0.0f);
+
+			//glm::vec3 wi = mixtureSampler.sample(random);
+			//float pdf = mixtureSampler.pdf(wi);
+
+			// ナイーヴ
+			//glm::vec3 wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+			//float pdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+
+			glm::vec3 wi;
+			float pdf_brdf;
+			float pdf_env;
+			auto Ng = backside ? -shadingPoint.Ng : shadingPoint.Ng;
+			if (random->uniform() < 0.5f) {
+				wi = shadingPoint.bxdf->sample(random, wo, shadingPoint);
+				pdf_brdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+				pdf_env = scene->envmap()->pdf(wi, Ng);
+			}
+			else {
+				wi = scene->envmap()->sample(random, Ng, &pdf_env);
+				pdf_brdf = shadingPoint.bxdf->pdf(wo, wi, shadingPoint);
+			}
+
+			float pdf = 0.5f * pdf_brdf + 0.5f * pdf_env;
+
+			//glm::vec3 wi;
+			//float pdf;
+			//auto Ng = backside ? -shadingPoint.Ng : shadingPoint.Ng;
+			//wi = scene->envmap()->sample(random, Ng, &pdf);
+
+			glm::vec3 bxdf = shadingPoint.bxdf->bxdf(wo, wi, shadingPoint);
+			glm::vec3 emission = shadingPoint.bxdf->emission(wo, shadingPoint);
+
+			float NoI = glm::dot(shadingPoint.Ng, wi);
+			float cosTheta = std::abs(NoI);
+
+			glm::vec3 contribution = emission * T;
+
+			RT_ASSERT(0.0f <= bxdf.x);
+			RT_ASSERT(0.0f <= bxdf.y);
+			RT_ASSERT(0.0f <= bxdf.z);
+
+			Lo += contribution;
+
+			if (1.0e-6f < pdf) {
+				T *= bxdf * cosTheta / pdf;
+			}
+			else {
+				T = glm::vec3(0.0f);
+			}
+
+			RT_ASSERT(glm::abs(glm::length2(wi) - 1.0f) < 1.0e-5f);
+			RT_ASSERT(glm::abs(glm::length2(wo) - 1.0f) < 1.0e-5f);
+			RT_ASSERT(glm::abs(glm::length2(shadingPoint.Ng) - 1.0f) < 1.0e-5f);
+
+			// ロシアンルーレット
+			float max_compornent = glm::compMax(T);
+			if (0.0f <= max_compornent == false) {
+				std::cout << px << "," << py << std::endl;
+			}
+			// RT_ASSERT(0.0f <= max_compornent);
+
+			// TODO Tはcontinue_pを含んでしまう？
+			// いや、でも合ってる気がする
+			// https://docs.google.com/file/d/0B8g97JkuSSBwUENiWTJXeGtTOHFmSm51UC01YWtCZw/edit?pli=1
+			float continue_p = i < 12 ? 1.0f : glm::min(max_compornent, 1.0f);
+			if (continue_p < random->uniform()) {
+				return Lo;
+			}
+			T /= continue_p;
+
+			// バイアスする方向は潜り込むときは逆転する
+			// が、必ずしもNoIだけで決めていいかどうか微妙なところがある気がするが・・・
+			ro = p + wi * kSceneEPS + (0.0f < NoI ? shadingPoint.Ng : -shadingPoint.Ng) * kSceneEPS;
+			rd = wi;
+
+			if (i == 1) {
+				return Lo;
+			}
+			return bounce(Lo, T, i + 1, scene, ro, rd, random, px, py, rays);
+		}
+		else {
+			auto env = scene->envmap();
+			glm::vec3 contribution = env->radiance(rd) * T;
+			Lo += contribution;
+			//if (i == 0) {
+			//	auto env = scene->envmap();
+			//	glm::vec3 contribution = env->radiance(rd) * T;
+			//	Lo += contribution;
+			//}
+			return Lo;
+		}
+	}
 	inline glm::vec3 radiance(const rt::Scene *scene, glm::vec3 ro, glm::vec3 rd, PeseudoRandom *random, int px, int py, uint32_t *rays) {
 		// const float kSceneEPS = scene.adaptiveEps();
 		const float kSceneEPS = 1.0e-4f;
 		const float kValueEPS = 1.0e-6f;
-
+		
 		glm::vec3 Lo;
 		glm::vec3 T(1.0f);
 
@@ -344,7 +481,7 @@ namespace rt {
 		//}
 		uint32_t shoot = 0;
 
-		constexpr int kDepth = 10;
+		constexpr int kDepth = 20;
 		for (int i = 0; i < kDepth; ++i) {
 			float tmin = 0.0f;
 			ShadingPoint shadingPoint;
@@ -426,7 +563,7 @@ namespace rt {
 				if (0.0f <= max_compornent == false) {
 					std::cout << px << "," << py << std::endl;
 				}
-				RT_ASSERT(0.0f <= max_compornent);
+				// RT_ASSERT(0.0f <= max_compornent);
 
 				// TODO Tはcontinue_pを含んでしまう？
 				// いや、でも合ってる気がする
@@ -518,7 +655,8 @@ namespace rt {
 
 						d = glm::normalize(p_objectPlane - o);
 						uint32_t rays;
-						auto r = radiance(_scene.get(), o, d, random, x, y, &rays);
+						// auto r = radiance(_scene.get(), o, d, random, x, y, &rays);
+						auto r = bounce(glm::vec3(0.0f), glm::vec3(1.0f), 0, _scene.get(), o, d, random, x, y, &rays);
 
 						for (int i = 0; i < r.length(); ++i) {
 							if (glm::isnan(r[i])) {
@@ -533,7 +671,7 @@ namespace rt {
 								_badSampleNegativeCount++;
 								r[i] = 0.0f;
 							}
-							if (100000.0f < r[i]) {
+							if (1000000.0f < r[i]) {
 								_badSampleFireflyCount++;
 								r[i] = 0.0f;
 							}
